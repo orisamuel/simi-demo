@@ -12,7 +12,7 @@ window.S = window.S || {};
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const db = JSON.parse(raw);
-        if (db && db.v === 1) {
+        if (db && db.v === 2) {
           /* דאטה בן יותר מ־3 ימים מתיישן (דדליינים בורחים) — נזרע טרי */
           if (!db.seededAt) db.seededAt = Date.now();
           if (Date.now() - db.seededAt <= 3 * 864e5) {

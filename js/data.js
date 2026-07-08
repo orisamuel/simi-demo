@@ -76,6 +76,15 @@ window.S = window.S || {};
     /* מסלול בסיס לכל תת־סוג: w:<מחלקה> | a:<שלב אישור> | acct */
     const types = [
       {
+        /* פוסט הוא משימת קריאייטיב: קופי ← עיצוב ← אישור קריאייטיב */
+        id: 't_post', name: 'פוסט / סושיאל', icon: 'message-square', primary: 'creative',
+        subs: [
+          { id: 's_social_post', name: 'פוסט סושיאל',           route: ['w:copy', 'w:design', 'a:creative', 'acct'] },
+          { id: 's_carousel',    name: 'קרוסלה',                route: ['w:copy', 'w:design', 'a:creative', 'acct'] },
+          { id: 's_post_copy',   name: 'קופי לפוסט (ללא עיצוב)', route: ['w:copy', 'a:creative', 'acct'] },
+        ],
+      },
+      {
         id: 't_deck', name: 'מצגת', icon: 'presentation', primary: 'creative',
         subs: [
           /* התוכן עובר אישור קריאייטיב לפני שממשיכים לעיצוב */
@@ -85,19 +94,17 @@ window.S = window.S || {};
         ],
       },
       {
-        id: 't_design', name: 'עיצוב', icon: 'image', primary: 'studio',
+        id: 't_design', name: 'עיצוב / סטודיו', icon: 'image', primary: 'studio',
         subs: [
-          { id: 's_social_post',     name: 'פוסט סושיאל',  route: ['w:design', 'a:studio', 'acct'] },
-          { id: 's_campaign_banner', name: 'באנר קמפיין',  route: ['w:design', 'a:studio', 'a:creative', 'acct'] },
-          { id: 's_brand_lang',      name: 'שפה גרפית',    route: ['w:design', 'a:studio', 'a:creative', 'a:partner', 'acct'] },
+          { id: 's_campaign_banner', name: 'באנר קמפיין', route: ['w:design', 'a:studio', 'a:creative', 'acct'] },
+          { id: 's_brand_lang',      name: 'שפה גרפית',   route: ['w:design', 'a:studio', 'a:creative', 'a:partner', 'acct'] },
         ],
       },
       {
         id: 't_copy', name: 'קופי', icon: 'file-text', primary: 'creative',
         subs: [
-          { id: 's_post_copy', name: 'קופי לפוסט',     route: ['w:copy', 'a:creative', 'acct'] },
-          { id: 's_script',    name: 'תסריט',          route: ['w:copy', 'a:creative', 'a:partner', 'acct'] },
-          { id: 's_naming',    name: 'סלוגן / ניימינג', route: ['w:copy', 'a:creative', 'a:partner', 'acct'] },
+          { id: 's_script', name: 'תסריט',           route: ['w:copy', 'a:creative', 'a:partner', 'acct'] },
+          { id: 's_naming', name: 'סלוגן / ניימינג', route: ['w:copy', 'a:creative', 'a:partner', 'acct'] },
         ],
       },
       {
@@ -158,13 +165,13 @@ window.S = window.S || {};
     const ACC = (o = {}) => ({ kind: 'account', state: 'pending', ...o });
 
     const tasks = [
-      /* 1 — בשיבוץ (עיצוב) */
+      /* 1 — בשיבוץ (קופי — תחילת מסלול פוסט) */
       {
         id: 'q1', title: 'פוסט סושיאל — מבצע קיץ',
         brief: 'קרוסלה לפייסבוק ואינסטגרם: 3 פריימים, דגש על 30% הנחה על סלטי הבית. חובה לשמור על הגריד החדש.',
-        clientId: 'c_hasalat', typeId: 't_design', subId: 's_social_post', size: 'S',
+        clientId: 'c_hasalat', typeId: 't_post', subId: 's_social_post', size: 'S',
         urgent: false, deadline: inDays(5), createdBy: 'u_guy', createdAt: ago(1, 3),
-        steps: [W('design', { state: 'cur' }), A('studio'), ACC()], cur: 0, rev: false,
+        steps: [W('copy', { state: 'cur' }), W('design'), A('creative'), ACC()], cur: 0, rev: false,
         versions: [], feedback: [], takeRequest: null, appliedRules: [], addedSlots: [], closed: false,
         activity: [{ at: ago(1, 3), byId: 'u_guy', text: 'פתח את המשימה' }],
       },
@@ -173,7 +180,7 @@ window.S = window.S || {};
       {
         id: 'q2', projectId: 'p1', title: 'קופי לפוסט — השקת האפליקציה החדשה',
         brief: 'פוסט הכרזה על האפליקציה. טון: צעיר אבל אמין. אורך: עד 60 מילים + הצעת כותרת.',
-        clientId: 'c_migdal', typeId: 't_copy', subId: 's_post_copy', size: 'M',
+        clientId: 'c_migdal', typeId: 't_post', subId: 's_post_copy', size: 'M',
         urgent: false, deadline: inDays(4), createdBy: 'u_hila', createdAt: ago(1, 6),
         steps: [W('copy', { state: 'cur', assigneeId: 'u_itay' }), A('creative'), ACC()], cur: 0, rev: false,
         versions: [], feedback: [], takeRequest: null, appliedRules: [], addedSlots: [], closed: false,
@@ -213,19 +220,28 @@ window.S = window.S || {};
         ],
       },
 
-      /* 5 — ממתין לאישור סטודיו */
+      /* 5 — פוסט בסוף המסלול: קופי ועיצוב הוגשו, ממתין לאישור קריאייטיב */
       {
         id: 'q5', title: 'פוסט סושיאל — פתיחת סניף תל אביב',
         brief: 'פוסט חגיגי לפתיחת הסניף החדש בשדרות רוטשילד. לשלב את צילומי הסניף מהתיקייה.',
-        clientId: 'c_hasalat', typeId: 't_design', subId: 's_social_post', size: 'S',
+        clientId: 'c_hasalat', typeId: 't_post', subId: 's_social_post', size: 'S',
         urgent: false, deadline: inDays(3), createdBy: 'u_guy', createdAt: ago(3),
-        steps: [W('design', { state: 'done', assigneeId: 'u_yoni', started: true }), A('studio', { state: 'cur' }), ACC()], cur: 1, rev: false,
-        versions: [{ n: 1, byId: 'u_yoni', at: ago(0, 10), note: 'שתי חלופות — אחת נקייה ואחת צבעונית יותר', link: 'https://example.com/figma-demo', fixes: [] }],
+        steps: [
+          W('copy', { state: 'done', assigneeId: 'u_michal', started: true }),
+          W('design', { state: 'done', assigneeId: 'u_yoni', started: true }),
+          A('creative', { state: 'cur' }),
+          ACC(),
+        ], cur: 2, rev: false,
+        versions: [
+          { n: 1, byId: 'u_michal', at: ago(1, 20), note: 'קופי לפוסט + הצעת כיתוב לתמונה', link: '', fixes: [] },
+          { n: 2, byId: 'u_yoni', at: ago(0, 10), note: 'עיצוב על הקופי — שתי חלופות, נקייה וצבעונית', link: 'https://example.com/figma-demo', fixes: [] },
+        ],
         feedback: [], takeRequest: null, appliedRules: [], addedSlots: [], closed: false,
         activity: [
           { at: ago(3), byId: 'u_guy', text: 'פתח את המשימה' },
-          { at: ago(2, 20), byId: 'u_roi', text: 'שיבץ את יונתן פרץ' },
-          { at: ago(0, 10), byId: 'u_yoni', text: 'הגיש גרסה 1 — עבר לאישור סטודיו' },
+          { at: ago(2, 20), byId: 'u_dana', text: 'שיבצה את מיכל אדר' },
+          { at: ago(1, 20), byId: 'u_michal', text: 'הגישה גרסה 1 — עבר לעיצוב' },
+          { at: ago(0, 10), byId: 'u_yoni', text: 'הגיש גרסה 2 — עבר לאישור קריאייטיב' },
         ],
       },
 
@@ -471,13 +487,13 @@ window.S = window.S || {};
       },
     ];
 
-    /* 17 — משימת אחות בפרויקט ההשקה (מחכה לקופי מהמשימה המקושרת) */
+    /* 17 — משימת אחות בפרויקט ההשקה */
     tasks.push({
-      id: 'q17', projectId: 'p1', title: 'עיצוב פוסט — השקת האפליקציה',
-      brief: 'העיצוב לפוסט ההשקה — מתבסס על הקופי מהמשימה המקושרת בפרויקט. פורמט: 1080×1350 + סטורי.',
-      clientId: 'c_migdal', typeId: 't_design', subId: 's_social_post', size: 'S',
+      id: 'q17', projectId: 'p1', title: 'באנר להשקת האפליקציה',
+      brief: 'סט באנרים לדיגיטל סביב ההשקה — מתבסס על הקופי מהמשימה המקושרת בפרויקט. מידות: 300×250, 970×250, 320×100.',
+      clientId: 'c_migdal', typeId: 't_design', subId: 's_campaign_banner', size: 'S',
       urgent: false, deadline: inDays(5), createdBy: 'u_hila', createdAt: ago(1, 5),
-      steps: [W('design', { state: 'cur', due: inDays(4) }), A('studio'), ACC()], cur: 0, rev: false,
+      steps: [W('design', { state: 'cur', due: inDays(4) }), A('studio'), A('creative'), ACC()], cur: 0, rev: false,
       versions: [], feedback: [], takeRequest: null, appliedRules: [], addedSlots: [], closed: false,
       activity: [{ at: ago(1, 5), byId: 'u_hila', text: 'פתחה את המשימה' }],
     });
@@ -490,7 +506,7 @@ window.S = window.S || {};
     ];
 
     return {
-      v: 1,
+      v: 2,
       seededAt: Date.now(),
       hintDismissed: false,
       currentUserId: 'u_hila',

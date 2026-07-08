@@ -62,15 +62,19 @@ window.S = window.S || {};
     /* --- גוף --- */
     const body = el('div', { class: 'drawer-body' });
 
-    /* בריף */
-    if (t.brief || t.smallFixOf) {
+    /* כרטיס פוקוס — כל מה שצריך כדי לפעול עכשיו, בלי לחפש */
+    const focus = buildFocusCard(t, me);
+    if (focus) body.append(focus);
+
+    /* בריף — תמיד מוצג */
+    {
       const box = el('div', { class: 'brief-box' });
       if (t.smallFixOf && S.task(t.smallFixOf)) {
         box.append(el('div', { style: 'margin-bottom:6px;font-weight:600;font-size:12.5px' },
           'תיקון קטן על בסיס: ',
           el('a', { href: '#', onclick: (e) => { e.preventDefault(); S.openDrawer(t.smallFixOf); } }, '"' + S.task(t.smallFixOf).title + '"')));
       }
-      box.append(t.brief);
+      box.append(t.brief || 'לא נכתב בריף למשימה הזו.');
       body.append(el('div', { class: 'drawer-sec' }, el('h3', { html: S.icon('file-text') + 'בריף' }), box));
     }
 
@@ -157,6 +161,76 @@ window.S = window.S || {};
 
     drawer.append(head, body, buildActions(t, me));
     document.getElementById('drawerScrim').onclick = S.closeDrawer;
+  }
+
+  /*
+    כרטיס הפוקוס: מותאם למי שמסתכל.
+    עובד/ת על השלב הנוכחי — הבריף, ההערות הפתוחות והתוצר הקודם.
+    מאשר/ת — הגרסה שממתינה, מה תוקן בה, והבריף שמולו בודקים.
+  */
+  function buildFocusCard(t, me) {
+    if (t.closed) return null;
+    const s = t.steps[t.cur];
+    if (!s) return null;
+    const lastV = t.versions[t.versions.length - 1];
+    const openFb = t.feedback.filter((f) => !f.resolved);
+
+    /* --- אני העובד/ת על השלב --- */
+    if (s.kind === 'work' && s.assigneeId === me.id) {
+      const card = el('div', { class: 'focus-card' },
+        el('div', { class: 'fc-title', html: S.icon('zap') + 'תורך — ' + S.esc(S.stepLabel(s).replace('עבודה — ', 'עבודת ')) +
+          (s.due ? ' <span class="fc-due' + (S.daysTo(s.due) < 0 ? ' late' : '') + '">עד ' + S.esc(S.fmtDate(s.due)) + '</span>' : '') }));
+
+      card.append(el('div', { class: 'fc-row' },
+        el('strong', null, 'הבריף: '),
+        t.brief || ('לא נכתב בריף — שווה לבדוק מול ' + S.user(t.createdBy).name)));
+
+      if (openFb.length) {
+        const fx = el('div', { class: 'fc-fixes' }, el('strong', null, 'הערות שמחכות לטיפול:'));
+        openFb.forEach((fb) => fx.append(el('div', { class: 'fc-fix', html: S.icon('undo') + S.esc(fb.text) + ' <span class="fc-by">— ' + S.esc(S.user(fb.byId).name) + '</span>' })));
+        card.append(fx);
+      }
+
+      if (lastV) {
+        card.append(el('div', { class: 'fc-row' },
+          el('strong', null, 'התוצר עד כה: '),
+          'גרסה ' + lastV.n + ' של ' + S.user(lastV.byId).name + (lastV.byId === me.id ? ' (שלך)' : ' — הבסיס לעבודה שלך'),
+          lastV.link ? el('a', { class: 'fc-link', href: lastV.link, target: '_blank', rel: 'noopener', html: S.icon('external') + 'פתיחה' }) : null));
+      }
+      return card;
+    }
+
+    /* --- אני המאשר/ת על השלב --- */
+    if (s.kind !== 'work' && S.canActOnStep(t, s, me.id)) {
+      const card = el('div', { class: 'focus-card approve' },
+        el('div', { class: 'fc-title', html: S.icon('stamp') + (s.kind === 'account' ? 'אצלך מול הלקוח' : 'ממתין לאישורך') + (lastV ? ' — גרסה ' + lastV.n : '') }));
+
+      if (lastV) {
+        card.append(el('div', { class: 'fc-meta' },
+          S.avatarEl(S.user(lastV.byId), 'sm'),
+          S.user(lastV.byId).name + ' הגיש/ה ' + S.relTime(lastV.at)));
+        if (lastV.note) card.append(el('div', { class: 'fc-note' }, '"' + lastV.note + '"'));
+        if (lastV.fixes && lastV.fixes.length) {
+          const fx = el('div', { class: 'fc-fixes ok' }, el('strong', null, 'מה תוקן בגרסה הזו:'));
+          lastV.fixes.forEach((fid) => {
+            const fb = t.feedback.find((f) => f.id === fid);
+            if (fb) fx.append(el('div', { class: 'fc-fix done', html: S.icon('check') + S.esc(fb.text) }));
+          });
+          card.append(fx);
+        }
+        card.append(el('div', { class: 'fc-row' },
+          el('strong', null, 'מול הבריף: '),
+          t.brief || 'לא נכתב בריף למשימה.'));
+        card.append(lastV.link
+          ? el('a', { class: 'btn btn-primary', href: lastV.link, target: '_blank', rel: 'noopener', html: S.icon('external') + '<span>פתיחת התוצר לבדיקה</span>' })
+          : el('div', { class: 'fc-nolink' }, 'לא צורף קישור לתוצר (זה דמו — בדרך כלל יהיה כאן קישור לפיגמה/דרייב)'));
+      } else {
+        card.append(el('div', { class: 'fc-row' }, 'עוד לא הוגשה גרסה לשלב הזה.'));
+      }
+      return card;
+    }
+
+    return null;
   }
 
   /* --- ציר זמן: גרסאות + הערות, מהחדש לישן --- */
@@ -329,6 +403,7 @@ window.S = window.S || {};
     }
 
     /* מחיקה — לפותח/ת המשימה או הרשאת ניהול */
+    const canDelete = t.createdBy === me.id || me.isAdmin;
     if (canDelete) {
       bar.append(el('button', {
         class: 'btn btn-ghost btn-sm', style: 'margin-right:auto;color:var(--danger)',
