@@ -63,24 +63,60 @@ window.S = window.S || {};
   VIEWS.my = function (me) {
     const box = el('div');
 
-    /* באנר היכרות לבודקים */
+    /* באנר היכרות לבודקים — כולל קפיצה לתרחישים חיים */
     if (!S.db.hintDismissed) {
+      const scenario = (label, icon, onclick) =>
+        el('button', { class: 'btn btn-outline btn-sm', html: S.icon(icon) + '<span>' + label + '</span>', onclick });
+
       box.append(el('div', { class: 'hint-banner' },
         el('span', { class: 'hint-ic', html: S.icon('sparkles') }),
-        el('div', null,
-          el('strong', null, 'ברוכים הבאים לדמו של סימי! '),
-          'כל הנתונים מדומים ונשמרים רק בדפדפן שלכם — כל מי שפותח את הלינק מקבל עותק נפרד משלו, אז אתם לא רואים שינויים אחד של השני. הטריק המרכזי: מחליפים משתמש בכפתור שלמעלה כדי לחוות את המערכת מכל תפקיד — עובד, מאשר, מנהל לקוח ושותף. התחרטתם? "איפוס הדמו" בתחתית התפריט מחזיר הכול להתחלה.'),
+        el('div', { style: 'flex:1;min-width:0' },
+          el('div', null,
+            el('strong', null, 'ברוכים הבאים לדמו של סימי! '),
+            'כל הנתונים מדומים ונשמרים רק בדפדפן שלכם — כל מי שפותח את הלינק מקבל עותק נפרד משלו. הטריק המרכזי: מחליפים משתמש בכפתור שלמעלה כדי לחוות את המערכת מכל תפקיד, וכשמשימה "אצל מישהו אחר" יש כפתור לקפוץ אליו ולהמשיך. "איפוס הדמו" בתחתית התפריט מחזיר הכול להתחלה.'),
+          el('div', { class: 'hint-actions' },
+            el('span', { class: 'ha-label' }, 'קפיצה לרגע מעניין:'),
+            scenario('לאשר בתור שותפה', 'stamp', () => {
+              S.act.switchUser('u_yael');
+              const t = S.db.tasks.find((x) => !x.closed && S.canActOnStep(x, x.steps[x.cur], 'u_yael'));
+              if (t) S.openDrawer(t.id); else S.act.goto('approvals');
+            }),
+            scenario('לתקן עבודה שנדחתה', 'undo', () => {
+              const t = S.db.tasks.find((x) => S.statusOf(x) === 'fixing');
+              if (!t) return S.toast('אין כרגע משימות בתיקונים — נסו להחזיר אחת', 'err');
+              S.act.switchUser(t.steps[t.cur].assigneeId || 'u_yoni');
+              S.openDrawer(t.id);
+            }),
+            scenario('לשבץ עבודה בגרירה', 'users', () => {
+              S.act.switchUser('u_roi');
+              S.act.goto('workload');
+            }))),
         el('button', { class: 'btn-close', html: S.icon('x'), 'aria-label': 'סגירת ההסבר', onclick: () => S.act.dismissHint() })));
     }
 
     box.append(pageHead('שלום, ' + me.name.split(' ')[0], 'ככה נראה היום שלך בסימי'));
 
+    /* כרטיסים עם פעולה מהירה — בלי לפתוח את המגירה */
     const mine = S.tasksAssignedTo(me.id).sort(byDeadline);
-    box.append(sectionTitle('pen', 'בעבודה אצלי', mine.length), grid(mine));
+    box.append(sectionTitle('pen', 'בעבודה אצלי', mine.length),
+      mine.length ? el('div', { class: 'card-grid' }, mine.map((t) => {
+        const s = t.steps[t.cur];
+        const action = !s.started
+          ? { label: 'התחלת עבודה', icon: 'play', onclick: () => { S.act.startWork(t.id); S.toast('יצאנו לדרך'); } }
+          : { label: 'הגשת גרסה ' + (t.versions.length + 1), icon: 'upload', onclick: () => S.openSubmitModal(t.id) };
+        return S.taskCard(t, { action });
+      })) : S.empty('אין כאן משימות כרגע'));
 
     const awaiting = S.tasksAwaiting(me.id).sort(byDeadline);
     if (awaiting.length) {
-      box.append(sectionTitle('stamp', 'ממתין לאישורי', awaiting.length), grid(awaiting));
+      box.append(sectionTitle('stamp', 'ממתין לאישורי', awaiting.length),
+        el('div', { class: 'card-grid' }, awaiting.map((t) => S.taskCard(t, {
+          action: {
+            label: t.steps[t.cur].kind === 'account' ? 'סגירה מול הלקוח' : 'לבדיקה ואישור',
+            icon: 'stamp',
+            onclick: () => S.openDrawer(t.id),
+          },
+        }))));
     }
 
     /* זמינות לקחת — לפי המחלקות שלי */
@@ -194,14 +230,27 @@ window.S = window.S || {};
   /* ============================================================
      ניהול עבודה — עומסים ושיבוץ בגרירה
      ============================================================ */
+  let wlDept = '';
+
   VIEWS.workload = function (me) {
     const box = el('div');
     box.append(pageHead('ניהול עבודה', 'מי עובד על מה — גוררים משימה בין עמודות כדי לשבץ או להעביר'));
 
+    /* סינון לפי מחלקה — פחות גלילה אופקית */
+    const deptChips = el('div', { class: 'filters' }, el('span', { class: 'f-label' }, 'מחלקה:'));
+    [['', 'הכול'], ...Object.entries(S.DEPTS).map(([d, def]) => [d, def.name])].forEach(([d, label]) => {
+      deptChips.append(el('button', {
+        class: 'chip-filter' + (wlDept === d ? ' on' : ''),
+        onclick: () => { wlDept = d; S.renderMain(); },
+      }, label));
+    });
+    box.append(deptChips);
+
     const board = el('div', { class: 'board' });
 
     /* משימות בשלב עבודה בלבד — הן הניתנות לשיבוץ */
-    const workTasks = S.db.tasks.filter((t) => !t.closed && t.steps[t.cur].kind === 'work');
+    let workTasks = S.db.tasks.filter((t) => !t.closed && t.steps[t.cur].kind === 'work');
+    if (wlDept) workTasks = workTasks.filter((t) => t.steps[t.cur].dept === wlDept);
 
     /* --- עמודת שיבוץ --- */
     const pool = workTasks.filter((t) => !t.steps[t.cur].assigneeId).sort(byDeadline);
@@ -227,23 +276,25 @@ window.S = window.S || {};
     }));
 
     /* --- עמודה לכל עובד/ת ביצוע (עומס משוקלל לפי גודל: S=1, M=2, L=3) --- */
-    S.productionUsers().forEach((u) => {
-      const mine = workTasks.filter((t) => t.steps[t.cur].assigneeId === u.id).sort(byDeadline);
-      const depts = S.userDepts(u);
-      const pts = mine.reduce((sum, t) => sum + (S.sizeWeight[t.size] || 1), 0);
-      board.append(makeDropCol({
-        key: u.id,
-        head: el('div', { class: 'worker-col-head' },
-          S.avatarEl(u),
-          el('span', { class: 'w-meta' },
-            el('strong', null, u.name),
-            el('small', null, depts.map((d) => S.DEPTS[d].name).join(' · '))),
-          el('span', { class: 'load', title: 'עומס משוקלל (S=1, M=2, L=3)' }, mine.length + ' · ' + pts + ' נק׳')),
-        tasks: mine,
-        accepts: (t) => depts.includes(t.steps[t.cur].dept),
-        onDrop: (t) => { S.act.assign(t.id, u.id); S.toast('שובץ ל' + u.name); },
-      }));
-    });
+    S.productionUsers()
+      .filter((u) => !wlDept || S.userDepts(u).includes(wlDept))
+      .forEach((u) => {
+        const mine = workTasks.filter((t) => t.steps[t.cur].assigneeId === u.id).sort(byDeadline);
+        const depts = S.userDepts(u);
+        const pts = mine.reduce((sum, t) => sum + (S.sizeWeight[t.size] || 1), 0);
+        board.append(makeDropCol({
+          key: u.id,
+          head: el('div', { class: 'worker-col-head' },
+            S.avatarEl(u),
+            el('span', { class: 'w-meta' },
+              el('strong', null, u.name),
+              el('small', null, depts.map((d) => S.DEPTS[d].name).join(' · '))),
+            el('span', { class: 'load' + (pts >= 6 ? ' hot' : ''), title: 'עומס משוקלל (S=1, M=2, L=3)' + (pts >= 6 ? ' — עומס גבוה' : '') }, mine.length + ' · ' + pts + ' נק׳')),
+          tasks: mine,
+          accepts: (t) => depts.includes(t.steps[t.cur].dept),
+          onDrop: (t) => { S.act.assign(t.id, u.id); S.toast('שובץ ל' + u.name); },
+        }));
+      });
 
     box.append(board);
     return box;
@@ -350,9 +401,16 @@ window.S = window.S || {};
 
     const board = el('div', { class: 'board' });
     COLS.forEach((c) => {
-      const colTasks = tasks.filter((t) => c.key.includes(S.statusOf(t))).sort(byDeadline);
+      const isClosed = c.key.includes('closed');
+      let colTasks = tasks.filter((t) => c.key.includes(S.statusOf(t)));
+      colTasks = isClosed
+        ? colTasks.sort((a, b) => new Date(b.closedAt || 0) - new Date(a.closedAt || 0))
+        : colTasks.sort(byDeadline);
+      const hidden = isClosed ? Math.max(0, colTasks.length - 8) : 0;
+      if (hidden) colTasks = colTasks.slice(0, 8);
       const bodyEl = el('div', { class: 'board-col-body' },
-        colTasks.length ? colTasks.map((t) => S.taskCard(t, { chip: c.key.length > 1 })) : el('div', { style: 'font-size:12px;color:var(--ink-faint);text-align:center;padding:14px 6px' }, '—'));
+        colTasks.length ? colTasks.map((t) => S.taskCard(t, { chip: c.key.length > 1 })) : el('div', { style: 'font-size:12px;color:var(--ink-faint);text-align:center;padding:14px 6px' }, '—'),
+        hidden ? el('div', { style: 'font-size:12px;color:var(--ink-faint);text-align:center;padding:8px' }, 'ועוד ' + hidden + ' סגורות ישנות יותר') : null);
       board.append(el('div', { class: 'board-col' },
         el('div', { class: 'board-col-head' },
           el('span', { class: 'dot', style: 'background:' + c.color }),

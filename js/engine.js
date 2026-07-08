@@ -340,6 +340,20 @@ window.S = window.S || {};
     return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
   };
 
+  /* זמן יחסי חם — "לפני שעתיים" */
+  S.relTime = function (iso) {
+    const mins = Math.round((Date.now() - new Date(iso)) / 6e4);
+    if (mins < 1) return 'עכשיו';
+    if (mins < 60) return 'לפני ' + (mins === 1 ? 'דקה' : mins + ' דק׳');
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return 'לפני ' + (hrs === 1 ? 'שעה' : hrs === 2 ? 'שעתיים' : hrs + ' שעות');
+    const days = Math.round(hrs / 24);
+    if (days === 1) return 'אתמול';
+    if (days === 2) return 'שלשום';
+    if (days < 8) return 'לפני ' + days + ' ימים';
+    return S.fmtDate(iso);
+  };
+
   S.fmtDateTime = function (iso) {
     const d = new Date(iso);
     return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' }) + ' ' +

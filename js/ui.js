@@ -60,6 +60,19 @@ window.S = window.S || {};
     document.getElementById('modalScrim').hidden = true;
   };
 
+  /* מלכודת פוקוס במודאל — Tab לא בורח החוצה */
+  document.getElementById('modal').addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const focusables = [...document.getElementById('modal').querySelectorAll(
+      'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])',
+    )].filter((x) => !x.disabled && x.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
   /* אישור פעולה */
   S.confirm = function (title, text, okLabel, onOk, danger) {
     S.openModal(title,
@@ -137,6 +150,15 @@ window.S = window.S || {};
           S.miniRoute(t),
           currentOwnerAvatar(t))),
     );
+
+    /* פעולה מהירה — בלי לפתוח את המגירה */
+    if (opts.action) {
+      card.append(el('button', {
+        class: 'card-action',
+        html: S.icon(opts.action.icon || 'play') + '<span>' + S.esc(opts.action.label) + '</span>',
+        onclick: (e) => { e.stopPropagation(); opts.action.onclick(); },
+      }));
+    }
 
     if (opts.draggable) {
       card.draggable = true;

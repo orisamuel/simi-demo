@@ -82,7 +82,7 @@
         },
       },
         el('span', null, n.text),
-        el('span', { class: 'n-when' }, S.fmtDateTime(n.at))));
+        el('span', { class: 'n-when' }, S.relTime(n.at))));
     });
   }
 
@@ -110,23 +110,100 @@
   function buildSwitchMenu() {
     switchMenu.innerHTML = '';
     switchMenu.append(el('div', { class: 'menu-title' }, 'מצב דמו — מחליפים משתמש כדי לראות את המערכת מכל תפקיד'));
-    S.db.users.forEach((u) => {
-      switchMenu.append(el('button', {
-        class: 'user-opt' + (u.id === S.db.currentUserId ? ' active' : ''),
-        role: 'option',
-        onclick: () => {
-          closeSwitch();
-          S.closeDrawer();
-          S.act.switchUser(u.id);
-          S.toast('עברת ל' + u.name);
+
+    /* קיבוץ לפי תפקיד — קל יותר למצוא את מי שמחפשים */
+    const GROUPS = [
+      ['הנהלה', ['partner', 'vpCreative', 'accountLead']],
+      ['מנהלי מחלקות', ['creativeManager', 'studioManager', 'videoManager']],
+      ['ניהול לקוח', ['accountManager']],
+      ['צוות ביצוע', ['copywriter', 'designer', 'videoEditor', 'media']],
+    ];
+    const placed = new Set();
+    GROUPS.forEach(([label, roles]) => {
+      const members = S.db.users.filter((u) => !placed.has(u.id) && u.roles.some((r) => roles.includes(r)));
+      if (!members.length) return;
+      switchMenu.append(el('div', { class: 'menu-title group' }, label));
+      members.forEach((u) => {
+        placed.add(u.id);
+        switchMenu.append(el('button', {
+          class: 'user-opt' + (u.id === S.db.currentUserId ? ' active' : ''),
+          role: 'option',
+          onclick: () => {
+            closeSwitch();
+            S.act.switchUser(u.id);
+            S.toast('עברת ל' + u.name);
+          },
         },
-      },
-        S.avatarEl(u),
-        el('span', { class: 'u-meta' },
-          el('strong', null, u.name),
-          el('small', null, S.roleNames(u)))));
+          S.avatarEl(u),
+          el('span', { class: 'u-meta' },
+            el('strong', null, u.name),
+            el('small', null, S.roleNames(u)))));
+      });
     });
   }
+
+  /* ---------- חיפוש גלובלי ---------- */
+  const gsInput = document.getElementById('gsearchInput');
+  const gsMenu = document.getElementById('gsearchMenu');
+  let gsSel = -1;
+
+  function gsResults(q) {
+    q = q.trim();
+    if (!q) return [];
+    return S.db.tasks.filter((t) => {
+      const sub = S.sub(t.typeId, t.subId);
+      const proj = t.projectId && S.project(t.projectId);
+      return (t.title + ' ' + S.client(t.clientId).name + ' ' + (sub ? sub.name : '') + ' ' + (proj ? proj.name : '')).includes(q);
+    }).slice(0, 8);
+  }
+
+  function buildGsMenu() {
+    const results = gsResults(gsInput.value);
+    gsSel = -1;
+    gsMenu.innerHTML = '';
+    if (!gsInput.value.trim()) { gsMenu.hidden = true; return; }
+    if (!results.length) {
+      gsMenu.append(el('div', { class: 'gs-empty' }, 'לא נמצאו משימות ל"' + gsInput.value.trim() + '"'));
+    } else {
+      results.forEach((t) => {
+        gsMenu.append(el('button', {
+          class: 'gs-item',
+          onclick: () => { closeGs(); S.openDrawer(t.id); },
+        },
+          el('span', { class: 'g-main' },
+            el('span', { class: 'g-title' }, t.title),
+            el('span', { class: 'g-sub' }, S.client(t.clientId).name + ' · ' + S.statusLabel(t))),
+          S.statusChip(t)));
+      });
+    }
+    gsMenu.hidden = false;
+  }
+
+  function closeGs() {
+    gsMenu.hidden = true;
+    gsInput.value = '';
+    gsInput.blur();
+  }
+
+  gsInput.addEventListener('input', buildGsMenu);
+  gsInput.addEventListener('focus', buildGsMenu);
+  gsInput.addEventListener('keydown', (e) => {
+    const items = [...gsMenu.querySelectorAll('.gs-item')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      gsSel = e.key === 'ArrowDown' ? (gsSel + 1) % items.length : (gsSel - 1 + items.length) % items.length;
+      items.forEach((it, i) => it.classList.toggle('sel', i === gsSel));
+    } else if (e.key === 'Enter') {
+      const target = items[gsSel >= 0 ? gsSel : 0];
+      if (target) target.click();
+    } else if (e.key === 'Escape') {
+      closeGs();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#gsearchWrap')) gsMenu.hidden = true;
+  });
 
   /* ---------- ניווט ---------- */
   function renderNav() {
@@ -177,7 +254,15 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (!document.getElementById('modalScrim').hidden) S.closeModal();
+      else if (!gsMenu.hidden) gsMenu.hidden = true;
+      else if (!switchMenu.hidden) closeSwitch();
+      else if (!document.getElementById('notifMenu').hidden) document.getElementById('notifMenu').hidden = true;
       else if (S.drawerTaskId) S.closeDrawer();
+    }
+    /* "/" ממקד את החיפוש (כשלא מקלידים בשדה אחר) */
+    if (e.key === '/' && !e.target.closest('input, textarea, select') && document.getElementById('modalScrim').hidden) {
+      e.preventDefault();
+      gsInput.focus();
     }
   });
 

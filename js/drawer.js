@@ -143,7 +143,7 @@ window.S = window.S || {};
       const actBox = el('div', { class: 'activity' });
       [...t.activity].reverse().forEach((a) => {
         actBox.append(el('div', { class: 'act-item' },
-          el('span', { class: 'act-when' }, S.fmtDateTime(a.at)),
+          el('span', { class: 'act-when', title: S.fmtDateTime(a.at) }, S.relTime(a.at)),
           el('span', null, S.user(a.byId).name + ' — ' + a.text)));
       });
       actBox.hidden = true;
@@ -173,7 +173,7 @@ window.S = window.S || {};
       el('div', { class: 'tl-head' },
         el('span', { class: 'tl-badge' }, 'גרסה ' + v.n),
         el('span', { class: 'tl-who' }, by.name),
-        el('span', { class: 'tl-when' }, S.fmtDateTime(v.at))));
+        el('span', { class: 'tl-when', title: S.fmtDateTime(v.at) }, S.relTime(v.at))));
     if (v.note) box.append(el('div', { class: 'tl-text' }, v.note));
     if (v.link) box.append(el('div', { class: 'tl-link' },
       el('a', { href: v.link, target: '_blank', rel: 'noopener', html: S.icon('external') + 'פתיחת התוצר' })));
@@ -195,7 +195,7 @@ window.S = window.S || {};
       el('div', { class: 'tl-head' },
         el('span', { class: 'tl-badge' }, isClient ? 'הערות לקוח' : 'חזרה לתיקונים'),
         el('span', { class: 'tl-who' }, by.name),
-        el('span', { class: 'tl-when' }, S.fmtDateTime(fb.at))),
+        el('span', { class: 'tl-when', title: S.fmtDateTime(fb.at) }, S.relTime(fb.at))),
       el('div', { class: 'tl-text' }, fb.text));
     if (fb.directBack) box.append(el('div', { class: 'tl-ret' }, 'אחרי התיקון — חזרה ישירה למאשר, בלי סבב מלא'));
     if (isClient) box.append(el('div', { class: 'tl-ret' }, 'המשימה חזרה לתחילת הסבב'));
@@ -295,6 +295,8 @@ window.S = window.S || {};
         }));
     }
 
+    const actedPrimary = bar.children.length > 0;
+
     /* --- הערות לקוח בכל שלב (מנהל/ת הלקוח) --- */
     if (s.kind !== 'account' && amOfClient) {
       bar.append(el('button', {
@@ -311,10 +313,19 @@ window.S = window.S || {};
       }));
     }
 
-    const canDelete = t.createdBy === me.id || me.isAdmin;
-    if (!bar.children.length && !canDelete) {
-      bar.append(el('span', { style: 'font-size:12.5px;color:var(--ink-faint)' },
-        'אין פעולות זמינות עבורך בשלב הזה — ', el('strong', null, currentWaitText(t))));
+    /* אין פעולה ראשית? מציעים לקפוץ למי שהמשימה אצלו — ממשיכים את הפלואו בקליק (דמו) */
+    if (!actedPrimary) {
+      const uid = S.stepOwnerId(t, s);
+      bar.prepend(el('span', { style: 'font-size:12.5px;color:var(--ink-faint);align-self:center' },
+        el('strong', null, currentWaitText(t))));
+      if (uid && uid !== me.id) {
+        const hopBtn = el('button', {
+          class: 'btn btn-outline', html: S.icon('user-swap') + '<span>להמשיך בתור ' + S.esc(S.user(uid).name) + '</span>',
+          title: 'מצב דמו — מחליף למשתמש שהמשימה אצלו',
+          onclick: () => { S.act.switchUser(uid); S.toast('עברת ל' + S.user(uid).name + ' — עכשיו אפשר להמשיך'); },
+        });
+        bar.insertBefore(hopBtn, bar.children[1] || null);
+      }
     }
 
     /* מחיקה — לפותח/ת המשימה או הרשאת ניהול */
@@ -341,7 +352,9 @@ window.S = window.S || {};
 
   /* ============================ מודאלים ============================ */
 
-  /* --- הגשת גרסה --- */
+  /* --- הגשת גרסה (נגיש גם מכפתור מהיר על כרטיס) --- */
+  S.openSubmitModal = (taskId) => openSubmitModal(S.task(taskId));
+
   function openSubmitModal(t) {
     const note = el('textarea', { placeholder: 'מה כדאי שהמאשר/ת ידעו על הגרסה הזו?' });
     const link = el('input', { type: 'url', placeholder: 'https://… (גוגל סליידס, פיגמה, דרייב)', dir: 'ltr', style: 'text-align:left' });
@@ -588,6 +601,18 @@ window.S = window.S || {};
     const brief = el('textarea', { placeholder: 'מה צריך לעשות, איפה החומרים, מה חשוב לדעת…' });
     const deadline = el('input', { type: 'date', value: draft.deadline });
 
+    /* קיצורי דדליין */
+    const presets = el('div', { class: 'deadline-presets' },
+      [['מחר', 1], ['3 ימים', 3], ['שבוע', 7], ['שבועיים', 14]].map(([label, days]) =>
+        el('button', {
+          type: 'button', class: 'preset-chip',
+          onclick: () => {
+            deadline.value = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+            refresh();
+          },
+        }, label)));
+    const deadlineWrap = el('div', { style: 'display:flex;flex-direction:column;gap:6px' }, deadline, presets);
+
     const clientSel = S.select(S.db.clients.map((c) => [c.id, c.name + (c.isNew ? ' · לקוח חדש' : '')]), draft.clientId, (v) => { draft.clientId = v; draft.projectId = ''; rebuildProject(); refresh(); });
 
     /* פרויקט (רשות) — מקבץ משימות קשורות */
@@ -741,7 +766,7 @@ window.S = window.S || {};
         S.field('סוג תוצר', typeSel, { required: true })),
       el('div', { class: 'form-row' },
         S.field('תת־סוג', subSel),
-        S.field('דדליין', deadline, { hint: 'ברירת מחדל: שבוע מהיום' })),
+        S.field('דדליין', deadlineWrap)),
       projWrap,
       el('div', { class: 'form-row' },
         S.field('גודל המשימה', sizeSeg),
