@@ -175,19 +175,39 @@ window.S = window.S || {};
       else if (i === t.cur) cls = 'cur';
       else if (s.state === 'skipped') cls = 'skipped';
 
-      const ownerId = S.stepOwnerId(t, s);
-      const owner = ownerId ? S.user(ownerId) : null;
+      const info = S.stepOwnerInfo(t, s);
+      const owner = info.id ? S.user(info.id) : null;
 
       const dot = el('span', { class: 'step-dot' });
       if (cls === 'done') dot.innerHTML = S.icon('check');
       else dot.innerHTML = S.icon(S.stepIcon(s));
 
-      const body = el('div', { class: 'step-body' },
-        el('span', { class: 'step-label' }, S.stepLabel(s)),
+      const label = el('span', { class: 'step-label' }, S.stepLabel(s));
+      const body = el('div', { class: 'step-body' }, label,
         owner
           ? el('span', { class: 'step-owner' }, S.avatarEl(owner, 'sm'), owner.name)
           : (s.kind === 'work' ? el('span', { class: 'step-owner' }, 'ממתין לשיבוץ') : null),
       );
+
+      /* דדליין פר־שלב */
+      if (s.kind === 'work' && s.due) {
+        const overdue = s.state !== 'done' && S.daysTo(s.due) < 0;
+        body.append(el('span', {
+          class: 'step-due' + (overdue ? ' overdue' : ''),
+          html: S.icon('calendar') + 'עד ' + S.esc(S.fmtDate(s.due)) + (overdue ? ' — באיחור' : ''),
+        }));
+      }
+
+      /* ניגוד עניינים — האישור הוסלם */
+      if (info.escalated) {
+        body.append(el('span', { class: 'step-note', html: S.icon('user-swap') + ' הוסלם — המאשר/ת המקורי/ת (' + S.esc(S.user(info.baseId).name) + ') ביצע/ה את העבודה' }));
+      }
+
+      /* ממלא/ת מקום פעיל/ה */
+      if (info.subId && s.kind !== 'work' && (cls === 'cur' || cls === '')) {
+        body.append(el('span', { class: 'step-owner' }, 'מ״מ: ' + S.user(info.subId).name));
+      }
+
       if (s.skipOnce) body.append(el('span', { class: 'step-note' }, 'ידולג בסבב הזה — חזרה ישירה למאשר'));
       if (s.state === 'skipped') body.append(el('span', { class: 'step-note' }, 'דולג בסבב הזה'));
 

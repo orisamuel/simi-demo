@@ -15,7 +15,14 @@ window.S = window.S || {};
         if (db && db.v === 1) {
           /* דאטה בן יותר מ־3 ימים מתיישן (דדליינים בורחים) — נזרע טרי */
           if (!db.seededAt) db.seededAt = Date.now();
-          if (Date.now() - db.seededAt <= 3 * 864e5) { S.db = db; return; }
+          if (Date.now() - db.seededAt <= 3 * 864e5) {
+            /* השלמות לדאטה שנשמר לפני פיצ'רים חדשים */
+            db.projects = db.projects || [];
+            db.notifs = db.notifs || [];
+            db.users.forEach((u) => { if (u.substituteId === undefined) u.substituteId = null; });
+            S.db = db;
+            return;
+          }
         }
       }
     } catch (e) { /* נתונים פגומים — נזרע מחדש */ }
@@ -43,6 +50,39 @@ window.S = window.S || {};
     t.activity.push({ at: now(), byId: byId || S.db.currentUserId, text });
   }
 
+  /* התראה למשתמש (מדלגים על מי שביצע את הפעולה בעצמו) */
+  function notify(userId, text, taskId) {
+    if (!userId || userId === S.db.currentUserId) return;
+    S.db.notifs.push({ id: nextId('n'), userId, at: now(), text, taskId, read: false });
+    if (S.db.notifs.length > 120) S.db.notifs = S.db.notifs.slice(-120);
+  }
+
+  /* התראה לאחראי/ת על השלב הנוכחי (כולל ממלא/ת מקום) */
+  function notifyCurrentStep(t) {
+    if (t.closed) return;
+    const s = t.steps[t.cur];
+    if (s.kind === 'work') {
+      if (s.assigneeId) notify(s.assigneeId, 'המשימה "' + t.title + '" עברה אליך — ' + S.stepLabel(s).replace('עבודה — ', 'עבודת '), t.id);
+      else notifyDeptManager(t, s.dept, 'משימה חדשה בשיבוץ (' + S.DEPTS[s.dept].name + '): "' + t.title + '"');
+      return;
+    }
+    const info = S.stepOwnerInfo(t, s);
+    const txt = (s.kind === 'account' ? 'ממתין לך מול הלקוח: "' : 'ממתין לאישורך: "') + t.title + '"';
+    notify(info.id, txt, t.id);
+    if (info.subId) notify(info.subId, txt + ' (כממלא/ת מקום)', t.id);
+  }
+
+  /* מנהל/ת המחלקה הרלוונטית לשיבוץ */
+  function notifyDeptManager(t, dept, text) {
+    const c = S.client(t.clientId);
+    let uid = null;
+    if (dept === 'design') uid = (S.db.users.find((u) => u.roles.includes('studioManager')) || {}).id;
+    else if (dept === 'video') uid = (S.db.users.find((u) => u.roles.includes('videoManager')) || {}).id;
+    else if (dept === 'copy') uid = c.creativeManagerId;
+    else uid = (S.db.users.find((u) => u.roles.includes('accountLead')) || {}).id;
+    notify(uid, text, t.id);
+  }
+
   /* קידום לשלב הבא — מדלג על שלבים שסומנו לדילוג חד־פעמי */
   function advance(t) {
     t.steps[t.cur].state = 'done';
@@ -64,15 +104,24 @@ window.S = window.S || {};
     /* ---------- יצירה ---------- */
     createTask(draft) {
       const route = S.computeRoute(draft);
-      const steps = S.materializeSteps(route.tokens);
+      const steps = S.materializeSteps(route.tokens, draft.stepDues);
       const me = S.cur();
 
       if (draft.assigneeId && steps[0] && steps[0].kind === 'work') {
         steps[0].assigneeId = draft.assigneeId;
       }
 
+      /* פרויקט חדש שהוקלד במקום */
+      let projectId = draft.projectId || null;
+      if (draft.newProjectName && draft.newProjectName.trim()) {
+        const p = { id: nextId('p'), name: draft.newProjectName.trim(), clientId: draft.clientId };
+        S.db.projects.push(p);
+        projectId = p.id;
+      }
+
       const t = {
         id: nextId('q'),
+        projectId,
         title: draft.title.trim(),
         brief: (draft.brief || '').trim(),
         clientId: draft.clientId,
@@ -102,8 +151,25 @@ window.S = window.S || {};
       if (draft.assigneeId) log(t, 'שיבץ/ה את ' + S.user(draft.assigneeId).name);
 
       S.db.tasks.unshift(t);
+      if (draft.assigneeId) notify(draft.assigneeId, 'שובצת למשימה חדשה: "' + t.title + '"', t.id);
+      else notifyCurrentStep(t);
       S.emit();
       return t;
+    },
+
+    /* עריכת פרטי משימה (לא משנה את המסלול) */
+    updateTask(taskId, patch) {
+      const t = S.task(taskId);
+      Object.assign(t, patch);
+      if (patch.stepDues) {
+        Object.entries(patch.stepDues).forEach(([idx, due]) => {
+          const s = t.steps[+idx];
+          if (s && s.kind === 'work') s.due = due || null;
+        });
+        delete t.stepDues;
+      }
+      log(t, 'עדכן/ה את פרטי המשימה');
+      S.emit();
     },
 
     /* ---------- שיבוץ ---------- */
@@ -118,6 +184,7 @@ window.S = window.S || {};
         log(t, 'הוחזרה לשיבוץ' + (prev ? ' (הוסרה מ' + S.user(prev).name + ')' : ''));
       } else {
         log(t, (prev ? 'העביר/ה את המשימה ל' : 'שיבץ/ה את ') + S.user(userId).name);
+        notify(userId, 'שובצת למשימה: "' + t.title + '"', t.id);
       }
       S.emit();
     },
@@ -126,6 +193,9 @@ window.S = window.S || {};
       const t = S.task(taskId);
       t.takeRequest = { byId: S.db.currentUserId, at: now() };
       log(t, 'ביקש/ה לקחת את המשימה — ממתין לאישור מנהל/ת');
+      const s = t.steps[t.cur];
+      if (s && s.kind === 'work') notifyDeptManager(t, s.dept, S.cur().name + ' רוצה לקחת את "' + t.title + '" — נדרש אישור');
+      notify(t.createdBy, S.cur().name + ' ביקש/ה לקחת את "' + t.title + '"', t.id);
       S.emit();
     },
 
@@ -137,6 +207,7 @@ window.S = window.S || {};
       if (s && s.kind === 'work') s.assigneeId = uid;
       t.takeRequest = null;
       log(t, 'אישר/ה את הבקשה — המשימה שובצה ל' + S.user(uid).name);
+      notify(uid, 'הבקשה שלך אושרה — "' + t.title + '" אצלך', t.id);
       S.emit();
     },
 
@@ -146,6 +217,7 @@ window.S = window.S || {};
       const uid = t.takeRequest.byId;
       t.takeRequest = null;
       log(t, 'דחה/תה את בקשת השיבוץ של ' + S.user(uid).name);
+      notify(uid, 'בקשת השיבוץ שלך ל"' + t.title + '" נדחתה', t.id);
       S.emit();
     },
 
@@ -172,6 +244,7 @@ window.S = window.S || {};
       advance(t);
       const nxt = t.steps[t.cur];
       log(t, 'הגיש/ה גרסה ' + n + ' — עבר ל' + S.stepLabel(nxt).replace('עבודה — ', 'עבודת '));
+      notifyCurrentStep(t);
       S.emit();
     },
 
@@ -181,6 +254,7 @@ window.S = window.S || {};
       advance(t);
       const nxt = t.steps[t.cur];
       log(t, 'אישר/ה — עבר ל' + S.stepLabel(nxt).replace('עבודה — ', 'עבודת '));
+      notifyCurrentStep(t);
       S.emit();
     },
 
@@ -188,15 +262,20 @@ window.S = window.S || {};
       דחייה לתיקונים.
       returnTo: 'same' (ברירת מחדל) | 'pool' | מזהה משתמש
       directBack: אחרי התיקון — חזרה ישירה למאשר הזה (דילוג על אישורים קודמים)
+      stepIndex: לאיזה שלב עבודה לחזור (במסלול עם כמה שלבי עבודה); ברירת מחדל — האחרון
     */
-    reject(taskId, { text, returnTo, directBack }) {
+    reject(taskId, { text, returnTo, directBack, stepIndex }) {
       const t = S.task(taskId);
       const i = t.cur;
 
-      /* שלב העבודה האחרון שלפני המאשר */
+      /* שלב העבודה שאליו חוזרים */
       let j = -1;
-      for (let k = i - 1; k >= 0; k--) {
-        if (t.steps[k].kind === 'work') { j = k; break; }
+      if (stepIndex != null && t.steps[stepIndex] && t.steps[stepIndex].kind === 'work' && stepIndex < i) {
+        j = stepIndex;
+      } else {
+        for (let k = i - 1; k >= 0; k--) {
+          if (t.steps[k].kind === 'work') { j = k; break; }
+        }
       }
       if (j < 0) return;
 
@@ -237,6 +316,9 @@ window.S = window.S || {};
       else if (returnTo && returnTo !== 'same') msg += ' (הועבר ל' + S.user(returnTo).name + ')';
       if (directBack) msg += ' — התיקון יחזור ישירות אליו/ה';
       log(t, msg);
+
+      if (ws.assigneeId) notify(ws.assigneeId, 'המשימה "' + t.title + '" חזרה אליך לתיקונים', t.id);
+      notify(t.createdBy, '"' + t.title + '" הוחזרה לתיקונים ע"י ' + S.cur().name, t.id);
       S.emit();
     },
 
@@ -266,6 +348,9 @@ window.S = window.S || {};
       t.rev = true;
       t.closed = false;
       log(t, 'החזיר/ה עם הערות לקוח לתחילת הסבב');
+      const ws = t.steps[j];
+      if (ws.assigneeId) notify(ws.assigneeId, 'הערות לקוח על "' + t.title + '" — חזרה אליך לסבב חדש', t.id);
+      notify(t.createdBy, 'הערות לקוח על "' + t.title + '" — חזרה לתחילת הסבב', t.id);
       S.emit();
     },
 
@@ -276,6 +361,8 @@ window.S = window.S || {};
       t.closed = true;
       t.closedAt = now();
       log(t, 'אישר/ה וסגר/ה את המשימה');
+      const done = new Set([t.createdBy, ...t.versions.map((v) => v.byId)]);
+      done.forEach((uid) => notify(uid, 'המשימה "' + t.title + '" אושרה ונסגרה 🎉', t.id));
       S.emit();
     },
 
@@ -287,6 +374,17 @@ window.S = window.S || {};
 
     dismissHint() {
       S.db.hintDismissed = true;
+      S.emit();
+    },
+
+    /* ---------- התראות ---------- */
+    readNotif(notifId) {
+      const n = S.db.notifs.find((x) => x.id === notifId);
+      if (n) { n.read = true; S.emit(); }
+    },
+
+    readAllNotifs() {
+      S.notifsOf(S.db.currentUserId).forEach((n) => { n.read = true; });
       S.emit();
     },
 

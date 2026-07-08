@@ -28,6 +28,62 @@
     av.style.color = '#fff';
 
     document.getElementById('btnNewTask').hidden = !S.can.create(me);
+
+    /* פעמון התראות */
+    const unread = S.unreadCount(me.id);
+    const badge = document.getElementById('notifBadge');
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 9 ? '9+' : unread;
+    if (!document.getElementById('notifMenu').hidden) buildNotifMenu();
+  }
+
+  /* ---------- התראות ---------- */
+  const notifBtn = document.getElementById('notifBtn');
+  const notifMenu = document.getElementById('notifMenu');
+
+  notifBtn.addEventListener('click', () => {
+    const open = !notifMenu.hidden;
+    if (open) { closeNotifs(); return; }
+    buildNotifMenu();
+    notifMenu.hidden = false;
+    notifBtn.setAttribute('aria-expanded', 'true');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifWrap')) closeNotifs();
+  });
+
+  function closeNotifs() {
+    notifMenu.hidden = true;
+    notifBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function buildNotifMenu() {
+    const me = S.cur();
+    const items = S.notifsOf(me.id);
+    notifMenu.innerHTML = '';
+    notifMenu.append(el('div', { class: 'notif-head' },
+      el('strong', null, 'התראות'),
+      items.some((n) => !n.read)
+        ? el('button', { class: 'link-toggle', onclick: () => { S.act.readAllNotifs(); } }, 'סימון הכול כנקרא')
+        : null));
+
+    if (!items.length) {
+      notifMenu.append(el('div', { class: 'notif-empty' }, 'אין התראות — בפרודקשן זה יגיע גם למייל/וואטסאפ'));
+      return;
+    }
+    items.slice(0, 30).forEach((n) => {
+      notifMenu.append(el('button', {
+        class: 'notif-item' + (n.read ? '' : ' unread'),
+        onclick: () => {
+          S.act.readNotif(n.id);
+          closeNotifs();
+          if (n.taskId && S.task(n.taskId)) S.openDrawer(n.taskId);
+        },
+      },
+        el('span', null, n.text),
+        el('span', { class: 'n-when' }, S.fmtDateTime(n.at))));
+    });
   }
 
   /* ---------- מחליף משתמש ---------- */

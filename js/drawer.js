@@ -45,6 +45,9 @@ window.S = window.S || {};
       el('div', { class: 'd-meta' },
         S.statusChip(t),
         el('span', { class: 'chip outline' }, client.name),
+        t.projectId && S.project(t.projectId)
+          ? el('span', { class: 'chip outline', html: S.icon('folder') + S.esc(S.project(t.projectId).name) })
+          : null,
         client.isNew ? el('span', { class: 'chip newclient', html: S.icon('sparkles') + 'לקוח חדש' }) : null,
         S.typeTag(t),
         el('span', { class: 'chip outline' }, 'גודל ' + t.size),
@@ -90,6 +93,24 @@ window.S = window.S || {};
     body.append(el('div', { class: 'drawer-sec' },
       el('h3', { html: S.icon('git-branch') + 'מסלול המשימה' }),
       S.routeStepper(t)));
+
+    /* עוד משימות באותו פרויקט */
+    if (t.projectId) {
+      const siblings = S.projectTasks(t.projectId).filter((x) => x.id !== t.id);
+      if (siblings.length) {
+        const listEl = el('div', { class: 'list' });
+        siblings.forEach((sib) => {
+          listEl.append(el('div', { class: 'list-row', onclick: () => S.openDrawer(sib.id) },
+            el('div', { class: 'r-main' },
+              el('div', { class: 'r-title' }, sib.title),
+              el('div', { class: 'r-sub' }, S.typeTag(sib))),
+            el('div', { class: 'r-side' }, S.statusChip(sib))));
+        });
+        body.append(el('div', { class: 'drawer-sec' },
+          el('h3', { html: S.icon('folder') + 'עוד בפרויקט "' + S.esc(S.project(t.projectId).name) + '"' }),
+          listEl));
+      }
+    }
 
     /* בקשת שיבוץ ממתינה */
     if (t.takeRequest) {
@@ -248,8 +269,8 @@ window.S = window.S || {};
       }
     }
 
-    /* --- שלב אישור --- */
-    if (s.kind === 'approval' && S.stepOwnerId(t, s) === me.id) {
+    /* --- שלב אישור (כולל ממלא/ת מקום) --- */
+    if (s.kind === 'approval' && S.canActOnStep(t, s, me.id)) {
       bar.append(
         el('button', {
           class: 'btn btn-primary', html: S.icon('thumbs-up') + '<span>אישור והעברה הלאה</span>',
@@ -261,8 +282,8 @@ window.S = window.S || {};
         }));
     }
 
-    /* --- שלב ניהול לקוח --- */
-    if (s.kind === 'account' && S.stepOwnerId(t, s) === me.id) {
+    /* --- שלב ניהול לקוח (כולל ממלא/ת מקום) --- */
+    if (s.kind === 'account' && S.canActOnStep(t, s, me.id)) {
       bar.append(
         el('button', {
           class: 'btn btn-primary', html: S.icon('check') + '<span>אישור וסגירה</span>',
@@ -279,6 +300,14 @@ window.S = window.S || {};
       bar.append(el('button', {
         class: 'btn btn-ghost', html: S.icon('message-square') + '<span>הערות לקוח — החזרה לתחילת הסבב</span>',
         onclick: () => openClientNotesModal(t),
+      }));
+    }
+
+    /* עריכת פרטים — פותח/ת, מנהל/ת הלקוח או הרשאת ניהול */
+    if (!t.closed && (t.createdBy === me.id || me.isAdmin || amOfClient)) {
+      bar.append(el('button', {
+        class: 'btn btn-ghost', html: S.icon('pen') + '<span>עריכה</span>',
+        onclick: () => openEditModal(t),
       }));
     }
 
@@ -349,41 +378,61 @@ window.S = window.S || {};
 
   /* --- החזרה לתיקונים --- */
   function openRejectModal(t) {
-    const s = t.steps[t.cur];
-    let j = -1;
-    for (let k = t.cur - 1; k >= 0; k--) if (t.steps[k].kind === 'work') { j = k; break; }
-    const ws = t.steps[j];
-    const worker = ws.assigneeId ? S.user(ws.assigneeId) : null;
+    const workSteps = t.steps
+      .map((s, i) => ({ s, i }))
+      .filter((x) => x.s.kind === 'work' && x.i < t.cur);
+    let j = workSteps[workSteps.length - 1].i;
 
     const text = el('textarea', { placeholder: 'מה צריך לתקן? ההערות יופיעו לעובד/ת וילוו את המשימה.' });
-
     let returnTo = 'same';
-    const others = S.productionUsers().filter((u) => S.userDepts(u).includes(ws.dept) && u.id !== ws.assigneeId);
-    const otherSel = S.select(others.map((u) => [u.id, u.name]), '', null, { placeholder: 'בחירת עובד/ת…' });
-    otherSel.style.display = 'none';
-
-    const retSel = S.select([
-      ['same', worker ? 'חזרה ל' + worker.name + ' (ביצע/ה את העבודה)' : 'חזרה לעובד/ת הנוכחי'],
-      ['other', 'העברה לעובד/ת אחר/ת'],
-      ['pool', 'החזרה לשיבוץ מחדש'],
-    ], 'same', (v) => {
-      returnTo = v;
-      otherSel.style.display = v === 'other' ? '' : 'none';
-    });
-
-    /* יש אישורים בין העבודה אליי? רק אז יש טעם ב"ישר אליי" */
-    const between = t.steps.slice(j + 1, t.cur).filter((x) => x.kind === 'approval');
     let directBack = false;
-    const bodyNodes = [
-      S.field('הערות לתיקון', text, { required: true }),
-      S.field('למי חוזרת המשימה?', retSel),
-      otherSel,
-    ];
-    if (between.length) {
-      bodyNodes.push(el('div', null, S.toggleEl(
-        'אחרי התיקון — ישר אליי (דילוג על ' + between.map((x) => S.SLOTS[x.slot].name).join(' ו') + ')',
-        false, (v) => { directBack = v; })));
+    let otherSel = null;
+
+    /* אזור "למי חוזרת" — נבנה מחדש כשמחליפים שלב יעד */
+    const retArea = el('div', { style: 'display:flex;flex-direction:column;gap:14px' });
+    function rebuildRetArea() {
+      const ws = t.steps[j];
+      const worker = ws.assigneeId ? S.user(ws.assigneeId) : null;
+      returnTo = 'same';
+      const others = S.productionUsers().filter((u) => S.userDepts(u).includes(ws.dept) && u.id !== ws.assigneeId);
+      otherSel = S.select(others.map((u) => [u.id, u.name]), '', null, { placeholder: 'בחירת עובד/ת…' });
+      otherSel.style.display = 'none';
+
+      const retSel = S.select([
+        ['same', worker ? 'חזרה ל' + worker.name + ' (ביצע/ה את העבודה)' : 'חזרה לשלב — ללא שיבוץ'],
+        ['other', 'העברה לעובד/ת אחר/ת'],
+        ['pool', 'החזרה לשיבוץ מחדש'],
+      ], 'same', (v) => {
+        returnTo = v;
+        otherSel.style.display = v === 'other' ? '' : 'none';
+      });
+
+      retArea.innerHTML = '';
+      retArea.append(S.field('למי חוזרת המשימה?', retSel), otherSel);
+
+      /* "ישר אליי" — רק אם יש אישורים בדרך חזרה אליי */
+      const between = t.steps.slice(j + 1, t.cur).filter((x) => x.kind === 'approval');
+      directBack = false;
+      if (between.length) {
+        retArea.append(el('div', null, S.toggleEl(
+          'אחרי התיקון — ישר אליי (דילוג על ' + between.map((x) => S.SLOTS[x.slot].name).join(', ') + ')',
+          false, (v) => { directBack = v; })));
+      }
     }
+
+    const bodyNodes = [S.field('הערות לתיקון', text, { required: true })];
+
+    /* מסלול עם כמה שלבי עבודה — בוחרים לאן חוזרים */
+    if (workSteps.length > 1) {
+      const stageSel = S.select(workSteps.map(({ s, i }) => [String(i),
+        'עבודת ' + S.DEPTS[s.dept].name + (s.assigneeId ? ' — ' + S.user(s.assigneeId).name : ''),
+      ]), String(j), (v) => { j = +v; rebuildRetArea(); });
+      bodyNodes.push(S.field('לאיזה שלב חוזרת המשימה?', stageSel,
+        { hint: 'שלבי עבודה שאחרי שלב היעד ייעשו שוב בהמשך הסבב' }));
+    }
+
+    bodyNodes.push(retArea);
+    rebuildRetArea();
 
     S.openModal('החזרה לתיקונים', bodyNodes, [
       el('button', {
@@ -395,7 +444,7 @@ window.S = window.S || {};
             if (!otherSel.value) return S.toast('צריך לבחור עובד/ת', 'err');
             ret = otherSel.value;
           }
-          S.act.reject(t.id, { text: text.value, returnTo: ret, directBack });
+          S.act.reject(t.id, { text: text.value, returnTo: ret, directBack, stepIndex: j });
           S.closeModal();
           S.toast('המשימה חזרה לתיקונים');
         },
@@ -425,13 +474,16 @@ window.S = window.S || {};
     ]);
   }
 
-  /* --- שינוי שיבוץ --- */
-  function openReassignModal(t) {
+  /* --- שיבוץ / שינוי שיבוץ (משמש גם ככפתור מהיר בניהול עבודה, עובד גם בטאץ') --- */
+  S.openAssignModal = function (taskId) {
+    const t = S.task(taskId);
     const s = t.steps[t.cur];
+    if (!s || s.kind !== 'work') return;
     const workers = S.productionUsers().filter((u) => S.userDepts(u).includes(s.dept) && u.id !== s.assigneeId);
     const sel = S.select(workers.map((u) => [u.id, u.name]), '', null, { placeholder: 'בחירת עובד/ת…' });
-    S.openModal('שינוי שיבוץ', [
-      S.field('העברה לעובד/ת', sel),
+    S.openModal(s.assigneeId ? 'שינוי שיבוץ' : 'שיבוץ המשימה', [
+      s.assigneeId ? el('p', { style: 'font-size:13px;color:var(--ink-soft)' }, 'כרגע אצל ' + S.user(s.assigneeId).name) : null,
+      S.field('שיבוץ לעובד/ת (' + S.DEPTS[s.dept].name + ')', sel),
     ], [
       el('button', {
         class: 'btn btn-primary', onclick: () => {
@@ -439,10 +491,68 @@ window.S = window.S || {};
           S.act.assign(t.id, sel.value);
           S.closeModal();
         },
-      }, 'העברה'),
-      el('button', {
+      }, s.assigneeId ? 'העברה' : 'שיבוץ'),
+      s.assigneeId ? el('button', {
         class: 'btn btn-outline', onclick: () => { S.act.assign(t.id, null); S.closeModal(); },
-      }, 'החזרה לשיבוץ'),
+      }, 'החזרה לשיבוץ') : null,
+      el('button', { class: 'btn btn-ghost', onclick: S.closeModal }, 'ביטול'),
+    ]);
+  };
+  const openReassignModal = (t) => S.openAssignModal(t.id);
+
+  /* --- עריכת פרטי משימה --- */
+  function openEditModal(t) {
+    const title = el('input', { type: 'text', value: t.title });
+    const brief = el('textarea', null, t.brief || '');
+    const deadline = el('input', { type: 'date', value: t.deadline.slice(0, 10) });
+    let size = t.size;
+    const sizeSeg = S.segmented([['S', 'S — קטנה'], ['M', 'M — בינונית'], ['L', 'L — גדולה']], size, (v) => { size = v; });
+    let urgent = t.urgent;
+    const urgentToggle = S.toggleEl('זה ממש דחוף לי', urgent, (v) => { urgent = v; });
+
+    /* דדליינים לשלבי עבודה שעוד לא הסתיימו */
+    const dueInputs = [];
+    t.steps.forEach((s, i) => {
+      if (s.kind === 'work' && s.state !== 'done') {
+        const inp = el('input', { type: 'date', value: s.due ? s.due.slice(0, 10) : '' });
+        dueInputs.push([i, inp, S.DEPTS[s.dept].name]);
+      }
+    });
+
+    const bodyNodes = [
+      S.field('שם המשימה', title, { required: true }),
+      S.field('בריף', brief),
+      el('div', { class: 'form-row' },
+        S.field('דדליין סופי', deadline),
+        S.field('גודל', sizeSeg, { hint: 'שינוי גודל לא מחשב מסלול מחדש' })),
+      el('div', null, urgentToggle),
+    ];
+    if (dueInputs.length) {
+      bodyNodes.push(S.field('דדליין לשלבי העבודה',
+        el('div', { class: 'form-row' }, dueInputs.map(([i, inp, name]) => S.field('עבודת ' + name, inp)))));
+    }
+
+    S.openModal('עריכת משימה', bodyNodes, [
+      el('button', {
+        class: 'btn btn-primary', html: S.icon('check') + '<span>שמירה</span>',
+        onclick: () => {
+          if (!title.value.trim()) return S.toast('צריך שם למשימה', 'err');
+          if (!deadline.value) return S.toast('צריך דדליין', 'err');
+          const stepDues = {};
+          dueInputs.forEach(([i, inp]) => {
+            stepDues[i] = inp.value ? new Date(inp.value + 'T12:00:00').toISOString() : null;
+          });
+          S.act.updateTask(t.id, {
+            title: title.value.trim(),
+            brief: brief.value.trim(),
+            deadline: new Date(deadline.value + 'T12:00:00').toISOString(),
+            size, urgent,
+            stepDues,
+          });
+          S.closeModal();
+          S.toast('המשימה עודכנה');
+        },
+      }),
       el('button', { class: 'btn btn-ghost', onclick: S.closeModal }, 'ביטול'),
     ]);
   }
@@ -463,17 +573,40 @@ window.S = window.S || {};
       deadline: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
       brief: '',
       assigneeId: '',
+      projectId: base ? (base.projectId || '') : '',
+      newProjectName: '',
       addedSlots: [],
       skippedRuleIds: [],
       smallFix: !!prefill.smallFixOf,
       smallFixOf: prefill.smallFixOf || null,
     };
 
+    /* דדליינים פר־שלב: ערכים לפי אינדקס טוקן במסלול */
+    const dueState = { values: {}, touched: {}, sig: '' };
+
     const title = el('input', { type: 'text', placeholder: 'למשל: פוסט סושיאל — קמפיין החורף', value: draft.title });
     const brief = el('textarea', { placeholder: 'מה צריך לעשות, איפה החומרים, מה חשוב לדעת…' });
     const deadline = el('input', { type: 'date', value: draft.deadline });
 
-    const clientSel = S.select(S.db.clients.map((c) => [c.id, c.name + (c.isNew ? ' · לקוח חדש' : '')]), draft.clientId, (v) => { draft.clientId = v; refresh(); });
+    const clientSel = S.select(S.db.clients.map((c) => [c.id, c.name + (c.isNew ? ' · לקוח חדש' : '')]), draft.clientId, (v) => { draft.clientId = v; draft.projectId = ''; rebuildProject(); refresh(); });
+
+    /* פרויקט (רשות) — מקבץ משימות קשורות */
+    const projWrap = el('div');
+    const newProjInput = el('input', { type: 'text', placeholder: 'שם הפרויקט החדש…', style: 'margin-top:6px' });
+    function rebuildProject() {
+      projWrap.innerHTML = '';
+      const opts = [['', 'ללא פרויקט'],
+        ...S.db.projects.filter((p) => p.clientId === draft.clientId).map((p) => [p.id, p.name]),
+        ['__new', '+ פרויקט חדש']];
+      const sel = S.select(opts, draft.projectId, (v) => {
+        draft.projectId = v === '__new' ? '' : v;
+        newProjInput.style.display = v === '__new' ? '' : 'none';
+        draft._newProj = v === '__new';
+      });
+      newProjInput.style.display = draft._newProj ? '' : 'none';
+      projWrap.append(S.field('פרויקט (רשות)', sel, { hint: 'משימות באותו פרויקט מקושרות זו לזו' }), newProjInput);
+    }
+    rebuildProject();
 
     const typeSel = S.select(S.db.types.map((tp) => [tp.id, tp.name]), draft.typeId, (v) => {
       draft.typeId = v;
@@ -571,8 +704,35 @@ window.S = window.S || {};
       });
       if (addable.length || draft.addedSlots.length) preview.append(overrideRow);
 
+      /* דדליין לכל שלב עבודה — הצעה אוטומטית, ניתן לעריכה */
+      const workIdxs = route.tokens.map((tk, i) => (tk.startsWith('w:') ? i : -1)).filter((i) => i >= 0);
+      const sig = route.tokens.join('|') + '@' + deadline.value;
+      if (dueState.sig !== sig) {
+        dueState.sig = sig;
+        const total = Math.max(1, S.daysTo(new Date(deadline.value + 'T12:00:00')));
+        workIdxs.forEach((tokIdx, k) => {
+          if (!dueState.touched[tokIdx]) {
+            const days = Math.max(1, Math.round(total * (k + 1) / (workIdxs.length + 1)));
+            dueState.values[tokIdx] = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+          }
+        });
+      }
+      if (workIdxs.length) {
+        const duesRow = el('div', { class: 'dues-row' }, el('span', { class: 'lbl' }, 'דדליין לשלבי העבודה:'));
+        workIdxs.forEach((tokIdx) => {
+          const inp = el('input', {
+            type: 'date', value: dueState.values[tokIdx] || '',
+            onchange: (e) => { dueState.values[tokIdx] = e.target.value; dueState.touched[tokIdx] = true; },
+          });
+          duesRow.append(el('label', { class: 'due-edit' }, S.DEPTS[route.tokens[tokIdx].slice(2)].name, inp));
+        });
+        preview.append(duesRow);
+      }
+
       rebuildAssign();
     }
+
+    deadline.addEventListener('change', () => refresh());
 
     const bodyNodes = [
       S.field('שם המשימה', title, { required: true }),
@@ -582,6 +742,7 @@ window.S = window.S || {};
       el('div', { class: 'form-row' },
         S.field('תת־סוג', subSel),
         S.field('דדליין', deadline, { hint: 'ברירת מחדל: שבוע מהיום' })),
+      projWrap,
       el('div', { class: 'form-row' },
         S.field('גודל המשימה', sizeSeg),
         S.field('דחיפות', el('div', { style: 'padding-top:8px' }, urgentToggle))),
@@ -604,6 +765,10 @@ window.S = window.S || {};
           if (!draft.clientId) return S.toast('צריך לבחור לקוח', 'err');
           if (!draft.typeId || !draft.subId) return S.toast('צריך לבחור סוג תוצר', 'err');
           if (!deadline.value) return S.toast('צריך לקבוע דדליין', 'err');
+          if (draft._newProj) draft.newProjectName = newProjInput.value;
+          const finalRoute = S.computeRoute(draft);
+          draft.stepDues = finalRoute.tokens.map((tk, i) =>
+            (tk.startsWith('w:') && dueState.values[i]) ? new Date(dueState.values[i] + 'T12:00:00').toISOString() : null);
           const t = S.act.createTask(draft);
           S.closeModal();
           S.toast('המשימה נפתחה' + (draft.assigneeId ? ' ושובצה' : ' והועברה לשיבוץ'));

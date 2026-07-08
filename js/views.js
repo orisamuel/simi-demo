@@ -69,7 +69,7 @@ window.S = window.S || {};
         el('span', { class: 'hint-ic', html: S.icon('sparkles') }),
         el('div', null,
           el('strong', null, 'ברוכים הבאים לדמו של סימי! '),
-          'כל הנתונים מדומים ונשמרים רק בדפדפן שלכם. הטריק המרכזי: מחליפים משתמש בכפתור שלמעלה כדי לחוות את המערכת מכל תפקיד — עובד, מאשר, מנהל לקוח ושותף. התחרטתם? "איפוס הדמו" בתחתית התפריט מחזיר הכול להתחלה.'),
+          'כל הנתונים מדומים ונשמרים רק בדפדפן שלכם — כל מי שפותח את הלינק מקבל עותק נפרד משלו, אז אתם לא רואים שינויים אחד של השני. הטריק המרכזי: מחליפים משתמש בכפתור שלמעלה כדי לחוות את המערכת מכל תפקיד — עובד, מאשר, מנהל לקוח ושותף. התחרטתם? "איפוס הדמו" בתחתית התפריט מחזיר הכול להתחלה.'),
         el('button', { class: 'btn-close', html: S.icon('x'), 'aria-label': 'סגירת ההסבר', onclick: () => S.act.dismissHint() })));
     }
 
@@ -164,8 +164,28 @@ window.S = window.S || {};
         el('span', { style: 'font-size:12px;color:var(--ink-faint);margin-right:auto' },
           active.length + ' פעילות' + (closedCount ? ' · ' + closedCount + ' סגורות' : '')));
 
-      box.append(el('div', { class: 'client-block' }, head,
-        active.length ? el('div', { class: 'card-grid' }, active.map((t) => S.taskCard(t, { hideClient: true }))) : S.empty('אין משימות פעילות ל' + c.name)));
+      /* קיבוץ לפי פרויקטים */
+      const content = el('div');
+      if (!active.length) {
+        content.append(S.empty('אין משימות פעילות ל' + c.name));
+      } else {
+        const inProj = new Set();
+        S.db.projects.filter((p) => p.clientId === c.id).forEach((p) => {
+          const pts = active.filter((t) => t.projectId === p.id);
+          if (!pts.length) return;
+          pts.forEach((t) => inProj.add(t.id));
+          content.append(
+            el('div', { class: 'proj-head', html: S.icon('folder') + S.esc(p.name) + ' <span class="count">(' + pts.length + ')</span>' }),
+            el('div', { class: 'card-grid' }, pts.map((t) => S.taskCard(t, { hideClient: true }))));
+        });
+        const rest = active.filter((t) => !inProj.has(t.id));
+        if (rest.length) {
+          if (inProj.size) content.append(el('div', { class: 'proj-head plain' }, 'ללא פרויקט'));
+          content.append(el('div', { class: 'card-grid' }, rest.map((t) => S.taskCard(t, { hideClient: true }))));
+        }
+      }
+
+      box.append(el('div', { class: 'client-block' }, head, content));
     });
 
     return box;
@@ -206,10 +226,11 @@ window.S = window.S || {};
       },
     }));
 
-    /* --- עמודה לכל עובד/ת ביצוע --- */
+    /* --- עמודה לכל עובד/ת ביצוע (עומס משוקלל לפי גודל: S=1, M=2, L=3) --- */
     S.productionUsers().forEach((u) => {
       const mine = workTasks.filter((t) => t.steps[t.cur].assigneeId === u.id).sort(byDeadline);
       const depts = S.userDepts(u);
+      const pts = mine.reduce((sum, t) => sum + (S.sizeWeight[t.size] || 1), 0);
       board.append(makeDropCol({
         key: u.id,
         head: el('div', { class: 'worker-col-head' },
@@ -217,7 +238,7 @@ window.S = window.S || {};
           el('span', { class: 'w-meta' },
             el('strong', null, u.name),
             el('small', null, depts.map((d) => S.DEPTS[d].name).join(' · '))),
-          el('span', { class: 'load' }, mine.length)),
+          el('span', { class: 'load', title: 'עומס משוקלל (S=1, M=2, L=3)' }, mine.length + ' · ' + pts + ' נק׳')),
         tasks: mine,
         accepts: (t) => depts.includes(t.steps[t.cur].dept),
         onDrop: (t) => { S.act.assign(t.id, u.id); S.toast('שובץ ל' + u.name); },
@@ -231,7 +252,13 @@ window.S = window.S || {};
   function makeDropCol({ key, head, tasks, accepts, onDrop, extra }) {
     const bodyEl = el('div', { class: 'board-col-body' });
     tasks.forEach((t) => {
-      bodyEl.append(S.taskCard(t, { draggable: true, hideClient: false, chip: false }));
+      const card = S.taskCard(t, { draggable: true, hideClient: false, chip: false });
+      /* שיבוץ מהיר — עובד גם בטאץ' (אין גרירה בנייד) */
+      card.append(el('button', {
+        class: 'quick-assign', html: S.icon('user-plus'), title: 'שיבוץ / העברה',
+        onclick: (e) => { e.stopPropagation(); S.openAssignModal(t.id); },
+      }));
+      bodyEl.append(card);
       if (extra) { const x = extra(t); if (x) bodyEl.append(x); }
     });
     if (!tasks.length) bodyEl.append(el('div', { style: 'font-size:12px;color:var(--ink-faint);text-align:center;padding:14px 6px' }, 'אפשר לגרור לכאן'));
@@ -386,15 +413,25 @@ window.S = window.S || {};
 
   function adminUsers() {
     const box = el('div');
+    box.append(el('p', { class: 'ac-desc', style: 'margin-bottom:12px' },
+      'ממלא/ת מקום מקבל/ת את כל האישורים של המשתמש (חופשה/מילואים) — שניהם רואים ויכולים לאשר.'));
     S.db.users.forEach((u) => {
+      const subSel = S.select([
+        ['', 'ללא ממלא/ת מקום'],
+        ...S.db.users.filter((x) => x.id !== u.id).map((x) => [x.id, x.name]),
+      ], u.substituteId || '', (v) => S.act.updateUser(u.id, { substituteId: v || null }));
+
       box.append(el('div', { class: 'admin-card' },
         el('div', { class: 'ac-head' },
-          el('h3', null, S.avatarEl(u), u.name),
+          el('h3', null, S.avatarEl(u), u.name,
+            u.substituteId ? el('span', { class: 'chip newclient', html: S.icon('user-swap') + 'מ״מ פעיל: ' + S.esc(S.user(u.substituteId).name) }) : null),
           el('div', { style: 'display:flex;gap:18px;flex-wrap:wrap' },
             S.toggleEl('סמכות שיבוץ', u.canAssign, (v) => S.act.updateUser(u.id, { canAssign: v })),
             S.toggleEl('הרשאת ניהול', u.isAdmin, (v) => S.act.updateUser(u.id, { isAdmin: v })))),
-        el('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
-          u.roles.map((r) => el('span', { class: 'chip outline' }, S.ROLES[r].name)))));
+        el('div', { style: 'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between' },
+          el('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
+            u.roles.map((r) => el('span', { class: 'chip outline' }, S.ROLES[r].name))),
+          S.field('ממלא/ת מקום', subSel))));
     });
     return box;
   }
@@ -409,6 +446,8 @@ window.S = window.S || {};
       const w = r.when || {};
       if (w.clientNew) whenChips.push(chipC('הלקוח בחודש הראשון'));
       if (w.smallFix) whenChips.push(chipC('תיקון קטן לתוצר מאושר'));
+      if (w.clientIds) w.clientIds.forEach((cid) => whenChips.push(chipC('לקוח: ' + (S.client(cid) ? S.client(cid).name : cid))));
+      if (w.typeIds) w.typeIds.forEach((tid) => whenChips.push(chipC('סוג: ' + (S.type(tid) ? S.type(tid).name : tid))));
       if (w.subIds) w.subIds.forEach((sid) => {
         const tp = S.db.types.find((t) => t.subs.some((sb) => sb.id === sid));
         const sb = tp && tp.subs.find((x) => x.id === sid);
@@ -443,25 +482,48 @@ window.S = window.S || {};
   const chipT = (txt) => el('span', { class: 'chip st-approval' }, txt);
 
   function openNewRuleModal() {
-    const name = el('input', { type: 'text', placeholder: 'למשל: קמפיינים גדולים — סבב מלא' });
+    const name = el('input', { type: 'text', placeholder: 'למשל: קמפיינים גדולים למגדל — סבב מלא' });
     const desc = el('input', { type: 'text', placeholder: 'משפט שמסביר את הכלל למי שיפגוש אותו' });
 
-    let condType = 'clientNew';
     const allSubs = S.db.types.flatMap((tp) => tp.subs.map((sb) => [sb.id, tp.name + ' · ' + sb.name]));
-    const subSel = S.select(allSubs, allSubs[0][0], null);
-    const sizeSel = S.select([['S', 'S'], ['M', 'M'], ['L', 'L']], 'L', null);
-    subSel.style.display = 'none'; sizeSel.style.display = 'none';
+    const COND_DEFS = {
+      clientNew: { label: 'הלקוח בחודש הראשון', opts: null },
+      smallFix:  { label: 'תיקון קטן לתוצר מאושר', opts: null },
+      client:    { label: 'לקוח מסוים', opts: S.db.clients.map((c) => [c.id, c.name]) },
+      type:      { label: 'סוג תוצר', opts: S.db.types.map((tp) => [tp.id, tp.name]) },
+      sub:       { label: 'תת־סוג', opts: allSubs },
+      size:      { label: 'גודל משימה', opts: [['S', 'S'], ['M', 'M'], ['L', 'L']] },
+    };
 
-    const condSel = S.select([
-      ['clientNew', 'הלקוח בחודש הראשון'],
-      ['sub', 'תת־סוג מסוים'],
-      ['size', 'גודל משימה'],
-      ['smallFix', 'תיקון קטן לתוצר מאושר'],
-    ], 'clientNew', (v) => {
-      condType = v;
-      subSel.style.display = v === 'sub' ? '' : 'none';
-      sizeSel.style.display = v === 'size' ? '' : 'none';
-    });
+    /* שורות תנאים — כולם צריכים להתקיים יחד (וגם) */
+    const rows = [];
+    const rowsBox = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
+
+    function addRow(type = 'clientNew') {
+      const row = { type, valSel: null };
+      const valWrap = el('span', { style: 'flex:1;display:flex' });
+      function rebuildVal() {
+        valWrap.innerHTML = '';
+        const def = COND_DEFS[row.type];
+        if (def.opts) {
+          row.valSel = S.select(def.opts, def.opts[0][0], null);
+          row.valSel.style.flex = '1';
+          valWrap.append(row.valSel);
+        } else row.valSel = null;
+      }
+      const typeSel = S.select(Object.entries(COND_DEFS).map(([k, d]) => [k, d.label]), type, (v) => { row.type = v; rebuildVal(); });
+      rebuildVal();
+      const rowEl = el('div', { style: 'display:flex;gap:8px;align-items:center' },
+        rows.length ? el('span', { class: 'chip st-approval' }, 'וגם') : null,
+        typeSel, valWrap,
+        el('button', {
+          class: 'btn btn-ghost btn-sm', html: S.icon('x'), title: 'הסרת התנאי',
+          onclick: () => { rows.splice(rows.indexOf(row), 1); rowEl.remove(); },
+        }));
+      rows.push(row);
+      rowsBox.append(rowEl);
+    }
+    addRow();
 
     const thenSel = S.select([
       ['full', 'המשימה תעבור מסלול אישורים מלא'],
@@ -477,18 +539,25 @@ window.S = window.S || {};
     S.openModal('כלל חדש', [
       S.field('שם הכלל', name, { required: true }),
       S.field('הסבר קצר', desc),
-      S.field('תנאי — הכלל חל כאשר…', el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, condSel, subSel, sizeSel)),
+      S.field('תנאים — הכלל חל כשכולם מתקיימים יחד', el('div', null, rowsBox,
+        el('button', { class: 'btn btn-outline btn-sm', style: 'margin-top:8px', html: S.icon('plus') + '<span>עוד תנאי</span>', onclick: () => addRow('client') }))),
       S.field('תוצאה', thenSel),
       S.field('נעילה', lockSel),
     ], [
       el('button', {
         class: 'btn btn-primary', onclick: () => {
           if (!name.value.trim()) return S.toast('צריך שם לכלל', 'err');
+          if (!rows.length) return S.toast('צריך לפחות תנאי אחד', 'err');
           const when = {};
-          if (condType === 'clientNew') when.clientNew = true;
-          if (condType === 'sub') when.subIds = [subSel.value];
-          if (condType === 'size') when.sizes = [sizeSel.value];
-          if (condType === 'smallFix') when.smallFix = true;
+          const push = (key, v) => { when[key] = when[key] || []; if (!when[key].includes(v)) when[key].push(v); };
+          rows.forEach((row) => {
+            if (row.type === 'clientNew') when.clientNew = true;
+            if (row.type === 'smallFix') when.smallFix = true;
+            if (row.type === 'client') push('clientIds', row.valSel.value);
+            if (row.type === 'type') push('typeIds', row.valSel.value);
+            if (row.type === 'sub') push('subIds', row.valSel.value);
+            if (row.type === 'size') push('sizes', row.valSel.value);
+          });
           const then = thenSel.value === 'partner' ? { requirePartner: true } : { route: thenSel.value };
           S.act.addRule({ name: name.value.trim(), desc: desc.value.trim(), when, then, lock: lockSel.value });
           S.closeModal();

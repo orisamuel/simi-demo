@@ -42,22 +42,22 @@ window.S = window.S || {};
   /* ---------- Seed ---------- */
   S.seed = function () {
     const users = [
-      { id: 'u_yael',  name: 'יעל ברק',     roles: ['partner'],                        isAdmin: true,  canAssign: true,  color: '#5b3aa0' },
-      { id: 'u_asaf',  name: 'אסף מזרחי',   roles: ['partner'],                        isAdmin: true,  canAssign: true,  color: '#0f6f85' },
-      { id: 'u_noa',   name: 'נועה פרידמן', roles: ['vpCreative'],                     isAdmin: true,  canAssign: true,  color: '#b0483a' },
-      { id: 'u_omer',  name: 'עומר שגב',    roles: ['creativeManager', 'copywriter'],  isAdmin: false, canAssign: true,  color: '#2b5fd9' },
-      { id: 'u_dana',  name: 'דנה לוי',     roles: ['creativeManager'],                isAdmin: false, canAssign: true,  color: '#7d4cc9' },
-      { id: 'u_roi',   name: 'רועי כהן',    roles: ['studioManager', 'designer'],      isAdmin: false, canAssign: true,  color: '#c05a10' },
-      { id: 'u_shira', name: 'שירה אלון',   roles: ['videoManager'],                   isAdmin: false, canAssign: true,  color: '#0f8577' },
-      { id: 'u_itay',  name: 'איתי רוזן',   roles: ['copywriter'],                     isAdmin: false, canAssign: false, color: '#4a6584' },
-      { id: 'u_michal',name: 'מיכל אדר',    roles: ['copywriter'],                     isAdmin: false, canAssign: false, color: '#a34a78' },
-      { id: 'u_tamar', name: 'תמר גולן',    roles: ['designer'],                       isAdmin: false, canAssign: false, color: '#2f8a4c' },
-      { id: 'u_yoni',  name: 'יונתן פרץ',   roles: ['designer'],                       isAdmin: false, canAssign: false, color: '#8a6d00' },
-      { id: 'u_eden',  name: 'עדן ברזילי',  roles: ['videoEditor'],                    isAdmin: false, canAssign: false, color: '#c92a2f' },
-      { id: 'u_lior',  name: 'ליאור אזולאי',roles: ['media'],                          isAdmin: false, canAssign: false, color: '#6d6a60' },
-      { id: 'u_hila',  name: 'הילה שטרן',   roles: ['accountManager'],                 isAdmin: false, canAssign: false, color: '#d1568f' },
-      { id: 'u_guy',   name: 'גיא נחום',    roles: ['accountManager'],                 isAdmin: false, canAssign: false, color: '#3d7a3d' },
-      { id: 'u_alon',  name: 'אלון דגן',    roles: ['accountLead', 'accountManager'],  isAdmin: true,  canAssign: true,  color: '#16150f' },
+      { id: 'u_yael',  name: 'יעל ברק',     roles: ['partner'],                        isAdmin: true,  canAssign: true,  substituteId: null, color: '#5b3aa0' },
+      { id: 'u_asaf',  name: 'אסף מזרחי',   roles: ['partner'],                        isAdmin: true,  canAssign: true,  substituteId: null, color: '#0f6f85' },
+      { id: 'u_noa',   name: 'נועה פרידמן', roles: ['vpCreative'],                     isAdmin: true,  canAssign: true,  substituteId: null, color: '#b0483a' },
+      { id: 'u_omer',  name: 'עומר שגב',    roles: ['creativeManager', 'copywriter'],  isAdmin: false, canAssign: true,  substituteId: null, color: '#2b5fd9' },
+      { id: 'u_dana',  name: 'דנה לוי',     roles: ['creativeManager'],                isAdmin: false, canAssign: true,  substituteId: null, color: '#7d4cc9' },
+      { id: 'u_roi',   name: 'רועי כהן',    roles: ['studioManager', 'designer'],      isAdmin: false, canAssign: true,  substituteId: null, color: '#c05a10' },
+      { id: 'u_shira', name: 'שירה אלון',   roles: ['videoManager'],                   isAdmin: false, canAssign: true,  substituteId: null, color: '#0f8577' },
+      { id: 'u_itay',  name: 'איתי רוזן',   roles: ['copywriter'],                     isAdmin: false, canAssign: false, substituteId: null, color: '#4a6584' },
+      { id: 'u_michal',name: 'מיכל אדר',    roles: ['copywriter'],                     isAdmin: false, canAssign: false, substituteId: null, color: '#a34a78' },
+      { id: 'u_tamar', name: 'תמר גולן',    roles: ['designer'],                       isAdmin: false, canAssign: false, substituteId: null, color: '#2f8a4c' },
+      { id: 'u_yoni',  name: 'יונתן פרץ',   roles: ['designer'],                       isAdmin: false, canAssign: false, substituteId: null, color: '#8a6d00' },
+      { id: 'u_eden',  name: 'עדן ברזילי',  roles: ['videoEditor'],                    isAdmin: false, canAssign: false, substituteId: null, color: '#c92a2f' },
+      { id: 'u_lior',  name: 'ליאור אזולאי',roles: ['media'],                          isAdmin: false, canAssign: false, substituteId: null, color: '#6d6a60' },
+      { id: 'u_hila',  name: 'הילה שטרן',   roles: ['accountManager'],                 isAdmin: false, canAssign: false, substituteId: null, color: '#d1568f' },
+      { id: 'u_guy',   name: 'גיא נחום',    roles: ['accountManager'],                 isAdmin: false, canAssign: false, substituteId: null, color: '#3d7a3d' },
+      { id: 'u_alon',  name: 'אלון דגן',    roles: ['accountLead', 'accountManager'],  isAdmin: true,  canAssign: true,  substituteId: null, color: '#16150f' },
     ];
 
     const clients = [
@@ -68,13 +68,19 @@ window.S = window.S || {};
       { id: 'c_almog',    name: 'אלמוג נדל"ן',   creativeManagerId: 'u_dana', partnerId: 'u_yael', accountManagerId: 'u_hila', isNew: true },
     ];
 
+    const projects = [
+      { id: 'p1', name: 'השקת האפליקציה', clientId: 'c_migdal' },
+      { id: 'p2', name: 'קמפיין החורף',   clientId: 'c_hasalat' },
+    ];
+
     /* מסלול בסיס לכל תת־סוג: w:<מחלקה> | a:<שלב אישור> | acct */
     const types = [
       {
         id: 't_deck', name: 'מצגת', icon: 'presentation', primary: 'creative',
         subs: [
-          { id: 's_deck_strategy', name: 'מצגת אסטרטגיה', route: ['w:copy', 'w:design', 'a:creative', 'a:partner', 'acct'] },
-          { id: 's_deck_sales',    name: 'מצגת מכירות',   route: ['w:copy', 'w:design', 'a:creative', 'a:partner', 'acct'] },
+          /* התוכן עובר אישור קריאייטיב לפני שממשיכים לעיצוב */
+          { id: 's_deck_strategy', name: 'מצגת אסטרטגיה', route: ['w:copy', 'a:creative', 'w:design', 'a:creative', 'a:partner', 'acct'] },
+          { id: 's_deck_sales',    name: 'מצגת מכירות',   route: ['w:copy', 'a:creative', 'w:design', 'a:creative', 'a:partner', 'acct'] },
           { id: 's_deck_update',   name: 'עדכון שקפים',   route: ['w:design', 'a:creative', 'acct'] },
         ],
       },
@@ -165,7 +171,7 @@ window.S = window.S || {};
 
       /* 2 — משובצת, טרם התחילה */
       {
-        id: 'q2', title: 'קופי לפוסט — השקת האפליקציה החדשה',
+        id: 'q2', projectId: 'p1', title: 'קופי לפוסט — השקת האפליקציה החדשה',
         brief: 'פוסט הכרזה על האפליקציה. טון: צעיר אבל אמין. אורך: עד 60 מילים + הצעת כותרת.',
         clientId: 'c_migdal', typeId: 't_copy', subId: 's_post_copy', size: 'M',
         urgent: false, deadline: inDays(4), createdBy: 'u_hila', createdAt: ago(1, 6),
@@ -254,12 +260,13 @@ window.S = window.S || {};
         clientId: 'c_shikun', typeId: 't_deck', subId: 's_deck_sales', size: 'L',
         urgent: false, deadline: inDays(6), createdBy: 'u_guy', createdAt: ago(8),
         steps: [
-          W('copy', { state: 'done', assigneeId: 'u_itay', started: true }),
-          W('design', { state: 'done', assigneeId: 'u_tamar', started: true }),
+          W('copy', { state: 'done', assigneeId: 'u_itay', started: true, due: ago(4) }),
+          A('creative', { state: 'done' }),
+          W('design', { state: 'done', assigneeId: 'u_tamar', started: true, due: ago(1) }),
           A('creative', { state: 'done' }),
           A('partner', { state: 'cur' }),
           ACC(),
-        ], cur: 3, rev: false,
+        ], cur: 4, rev: false,
         versions: [
           { n: 1, byId: 'u_itay', at: ago(5), note: 'שלד תוכן + כותרות לכל השקפים', link: 'https://docs.google.com/presentation/d/demo', fixes: [] },
           { n: 2, byId: 'u_tamar', at: ago(1, 12), note: 'עיצוב מלא על גבי התוכן המאושר', link: 'https://docs.google.com/presentation/d/demo', fixes: [] },
@@ -267,7 +274,8 @@ window.S = window.S || {};
         feedback: [], takeRequest: null, appliedRules: ['r_large'], addedSlots: [], closed: false,
         activity: [
           { at: ago(8), byId: 'u_guy', text: 'פתח את המשימה' },
-          { at: ago(5), byId: 'u_itay', text: 'הגיש גרסה 1 — עבר לעיצוב' },
+          { at: ago(5), byId: 'u_itay', text: 'הגיש גרסה 1 — עבר לאישור תוכן' },
+          { at: ago(4, 12), byId: 'u_dana', text: 'אישרה את התוכן — עבר לעיצוב' },
           { at: ago(1, 12), byId: 'u_tamar', text: 'הגישה גרסה 2 — עבר לאישור קריאייטיב' },
           { at: ago(0, 18), byId: 'u_dana', text: 'אישרה — עבר לאישור שותפה' },
         ],
@@ -378,8 +386,9 @@ window.S = window.S || {};
         clientId: 'c_almog', typeId: 't_deck', subId: 's_deck_strategy', size: 'L',
         urgent: false, deadline: inDays(10), createdBy: 'u_hila', createdAt: ago(2),
         steps: [
-          W('copy', { state: 'cur', assigneeId: 'u_michal', started: true }),
-          W('design'),
+          W('copy', { state: 'cur', assigneeId: 'u_michal', started: true, due: inDays(3) }),
+          A('creative'),
+          W('design', { due: inDays(8) }),
           A('creative'),
           A('partner'),
           ACC(),
@@ -440,7 +449,7 @@ window.S = window.S || {};
 
       /* 16 — עומר עם כובע קופירייטר (לקוח של דנה) */
       {
-        id: 'q16', title: 'סלוגן לקמפיין החורף',
+        id: 'q16', projectId: 'p2', title: 'סלוגן לקמפיין החורף',
         brief: 'סלוגן לקמפיין החורף — 5–8 חלופות. חייב לעבוד גם בשילוט חוצות וגם בדיגיטל.',
         clientId: 'c_hasalat', typeId: 't_copy', subId: 's_naming', size: 'M',
         urgent: false, deadline: inDays(7), createdBy: 'u_dana', createdAt: ago(4),
@@ -462,13 +471,31 @@ window.S = window.S || {};
       },
     ];
 
+    /* 17 — משימת אחות בפרויקט ההשקה (מחכה לקופי מהמשימה המקושרת) */
+    tasks.push({
+      id: 'q17', projectId: 'p1', title: 'עיצוב פוסט — השקת האפליקציה',
+      brief: 'העיצוב לפוסט ההשקה — מתבסס על הקופי מהמשימה המקושרת בפרויקט. פורמט: 1080×1350 + סטורי.',
+      clientId: 'c_migdal', typeId: 't_design', subId: 's_social_post', size: 'S',
+      urgent: false, deadline: inDays(5), createdBy: 'u_hila', createdAt: ago(1, 5),
+      steps: [W('design', { state: 'cur', due: inDays(4) }), A('studio'), ACC()], cur: 0, rev: false,
+      versions: [], feedback: [], takeRequest: null, appliedRules: [], addedSlots: [], closed: false,
+      activity: [{ at: ago(1, 5), byId: 'u_hila', text: 'פתחה את המשימה' }],
+    });
+
+    /* התראות פתיחה — שהפעמון לא יהיה ריק */
+    const notifs = [
+      { id: 'n1', userId: 'u_hila', at: ago(0, 12), text: 'ממתין לך מול הלקוח: "סרטון ערוך — סיכום כנס הסוכנים"', taskId: 'q9', read: false },
+      { id: 'n2', userId: 'u_hila', at: ago(1, 2), text: 'עומר שגב החזיר לתיקונים את "באנר קמפיין — סוף עונה"', taskId: 'q8', read: false },
+      { id: 'n3', userId: 'u_yael', at: ago(0, 18), text: 'ממתין לאישורך: "מצגת מכירות — פרויקט המגורים ברמת גן"', taskId: 'q7', read: false },
+    ];
+
     return {
       v: 1,
       seededAt: Date.now(),
       hintDismissed: false,
       currentUserId: 'u_hila',
       route: 'my',
-      users, clients, types, rules, tasks,
+      users, clients, projects, types, rules, tasks, notifs,
       seq: 100, /* מונה מזהים */
     };
   };

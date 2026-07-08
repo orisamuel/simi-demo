@@ -30,8 +30,8 @@ window.S = window.S || {};
     admin(u) { return !!u.isAdmin; },
   };
 
-  /* מי מאשר בשלב נתון (לפי הלקוח של המשימה) */
-  S.stepOwnerId = function (task, step) {
+  /* המאשר הבסיסי בשלב נתון (לפי הלקוח של המשימה) */
+  function baseOwnerId(task, step) {
     const c = S.client(task.clientId);
     if (step.kind === 'work') return step.assigneeId;
     if (step.kind === 'account') return c.accountManagerId;
@@ -42,6 +42,67 @@ window.S = window.S || {};
       if (step.slot === 'video') return (S.db.users.find((u) => u.roles.includes('videoManager')) || {}).id;
     }
     return null;
+  }
+
+  /* מי ביצע את שלב העבודה האחרון שלפני שלב נתון */
+  function lastWorkerBefore(task, stepIdx) {
+    for (let k = stepIdx - 1; k >= 0; k--) {
+      if (task.steps[k].kind === 'work') return task.steps[k].assigneeId;
+    }
+    return null;
+  }
+
+  /* יעד הסלמה כשהמאשר נוגע בדבר (ביצע את העבודה בעצמו) */
+  function escalationTarget(task, slot, conflictedId) {
+    const c = S.client(task.clientId);
+    const vp = S.db.users.find((u) => u.roles.includes('vpCreative'));
+    if (slot === 'partner') {
+      const other = S.db.users.find((u) => u.roles.includes('partner') && u.id !== conflictedId);
+      if (other) return other.id;
+      return vp ? vp.id : conflictedId;
+    }
+    if (slot === 'creative') {
+      if (vp && vp.id !== conflictedId) return vp.id;
+      return c.partnerId !== conflictedId ? c.partnerId : conflictedId;
+    }
+    /* studio / video */
+    if (c.creativeManagerId !== conflictedId) return c.creativeManagerId;
+    return vp && vp.id !== conflictedId ? vp.id : c.partnerId;
+  }
+
+  /*
+    מידע מלא על אחריות בשלב:
+    { id: המאשר בפועל, baseId, escalated: הוסלם עקב ניגוד עניינים, subId: ממלא/ת מקום }
+  */
+  S.stepOwnerInfo = function (task, step) {
+    let id = baseOwnerId(task, step);
+    let escalated = false;
+    if (step.kind === 'approval' && id) {
+      const idx = task.steps.indexOf(step);
+      const worker = lastWorkerBefore(task, idx);
+      if (worker && worker === id) {
+        const target = escalationTarget(task, step.slot, id);
+        if (target && target !== id) { id = target; escalated = true; }
+      }
+    }
+    const owner = id ? S.user(id) : null;
+    return {
+      id,
+      baseId: baseOwnerId(task, step),
+      escalated,
+      subId: owner && owner.substituteId ? owner.substituteId : null,
+    };
+  };
+
+  S.stepOwnerId = function (task, step) {
+    return S.stepOwnerInfo(task, step).id;
+  };
+
+  /* האם משתמש רשאי לפעול בשלב אישור/ניהול-לקוח (כולל ממלא/ת מקום) */
+  S.canActOnStep = function (task, step, uid) {
+    if (!step || step.kind === 'work') return false;
+    const info = S.stepOwnerInfo(task, step);
+    return info.id === uid || info.subId === uid;
   };
 
   S.stepLabel = function (step) {
@@ -108,6 +169,7 @@ window.S = window.S || {};
     const w = rule.when || {};
     const client = S.client(draft.clientId);
     if (w.clientNew && !(client && client.isNew)) return false;
+    if (w.clientIds && !w.clientIds.includes(draft.clientId)) return false;
     if (w.subIds && !w.subIds.includes(draft.subId)) return false;
     if (w.typeIds && !w.typeIds.includes(draft.typeId)) return false;
     if (w.sizes && !w.sizes.includes(draft.size)) return false;
@@ -115,18 +177,25 @@ window.S = window.S || {};
     return true;
   }
 
-  /* מסלול מלא קאנוני לסוג תוצר: שלבי עבודה + כל האישורים הרלוונטיים */
+  /*
+    מסלול מלא: שומר על מבנה משולב (אישורי ביניים בין שלבי עבודה)
+    ומוודא שגוש האישורים הסופי — אחרי שלב העבודה האחרון — כולל
+    את אישור המחלקה, הקריאייטיב והשותף/ה.
+  */
   function fullChain(baseTokens, typeId) {
     const type = S.type(typeId);
-    const works = baseTokens.filter((tk) => tk.startsWith('w:'));
-    const slots = new Set(['creative', 'partner']);
+    const body = baseTokens.filter((tk) => tk !== 'acct');
+    const lastW = body.reduce((acc, tk, i) => (tk.startsWith('w:') ? i : acc), -1);
+    const head = body.slice(0, lastW + 1); /* עבודות + אישורי ביניים */
+    const slots = new Set(body.slice(lastW + 1).filter((tk) => tk.startsWith('a:')).map((tk) => tk.slice(2)));
+    slots.add('creative');
+    slots.add('partner');
     if (type.primary && type.primary !== 'creative' && type.primary !== 'partner') slots.add(type.primary);
-    /* אם המסלול הבסיסי כלל אישורים נוספים — נשמור אותם */
-    baseTokens.filter((tk) => tk.startsWith('a:')).forEach((tk) => slots.add(tk.slice(2)));
-    const approvals = [...slots].sort((a, b) => SLOT_ORDER[a] - SLOT_ORDER[b]).map((s) => 'a:' + s);
-    return [...works, ...approvals, 'acct'];
+    const tail = [...slots].sort((a, b) => SLOT_ORDER[a] - SLOT_ORDER[b]).map((s) => 'a:' + s);
+    return [...head, ...tail, 'acct'];
   }
 
+  /* מסלול מקוצר: רק שלבי העבודה (גם המשולבים) ואז ניהול לקוח */
   function shortChain(baseTokens) {
     return [...baseTokens.filter((tk) => tk.startsWith('w:')), 'acct'];
   }
@@ -196,26 +265,26 @@ window.S = window.S || {};
     return { tokens, fired, base };
   };
 
+  /* הוספת אישור לגוש הסופי (אחרי שלב העבודה האחרון), לפי הסדר הקאנוני */
   function insertSlot(tokens, slot) {
-    const out = tokens.filter((tk) => tk !== 'acct' && tk !== 'a:' + slot);
-    const newTok = 'a:' + slot;
-    /* הכנסה לפי הסדר הקאנוני של האישורים */
-    let idx = out.length;
-    for (let i = 0; i < out.length; i++) {
-      if (out[i].startsWith('a:')) {
-        const s = out[i].slice(2);
-        if (SLOT_ORDER[s] > SLOT_ORDER[slot]) { idx = i; break; }
-      }
+    const body = tokens.filter((tk) => tk !== 'acct');
+    const lastW = body.reduce((acc, tk, i) => (tk.startsWith('w:') ? i : acc), -1);
+    /* כבר קיים בגוש הסופי? לא מכפילים */
+    if (body.slice(lastW + 1).includes('a:' + slot)) { body.push('acct'); return body; }
+    let idx = body.length;
+    for (let i = lastW + 1; i < body.length; i++) {
+      if (body[i].startsWith('a:') && SLOT_ORDER[body[i].slice(2)] > SLOT_ORDER[slot]) { idx = i; break; }
     }
-    out.splice(idx, 0, newTok);
-    out.push('acct');
-    return out;
+    body.splice(idx, 0, 'a:' + slot);
+    body.push('acct');
+    return body;
   }
 
-  /* המרת טוקנים לאובייקטי שלבים */
-  S.materializeSteps = function (tokens) {
+  /* המרת טוקנים לאובייקטי שלבים; dues — מערך מקביל של דדליין פר־שלב */
+  S.materializeSteps = function (tokens, dues) {
     return tokens.map((tk, i) => {
-      if (tk.startsWith('w:')) return { kind: 'work', dept: tk.slice(2), state: i === 0 ? 'cur' : 'pending', assigneeId: null, started: false };
+      const due = dues && dues[i] ? dues[i] : null;
+      if (tk.startsWith('w:')) return { kind: 'work', dept: tk.slice(2), state: i === 0 ? 'cur' : 'pending', assigneeId: null, started: false, due };
       if (tk.startsWith('a:')) return { kind: 'approval', slot: tk.slice(2), state: 'pending' };
       return { kind: 'account', state: 'pending' };
     });
@@ -230,13 +299,23 @@ window.S = window.S || {};
     return s && s.kind === 'work' && s.assigneeId === uid;
   });
 
-  /* משימות שממתינות לאישור של משתמש (כולל שלב ניהול לקוח) */
+  /* משימות שממתינות לאישור של משתמש (כולל ממלא/ת מקום ושלב ניהול לקוח) */
   S.tasksAwaiting = (uid) => S.db.tasks.filter((t) => {
     if (t.closed) return false;
-    const s = t.steps[t.cur];
-    if (!s || s.kind === 'work') return false;
-    return S.stepOwnerId(t, s) === uid;
+    return S.canActOnStep(t, t.steps[t.cur], uid);
   });
+
+  /* משקל עומס לפי גודל משימה */
+  S.sizeWeight = { S: 1, M: 2, L: 3 };
+
+  /* פרויקטים */
+  S.project = (id) => (S.db.projects || []).find((p) => p.id === id);
+  S.projectTasks = (pid) => S.db.tasks.filter((t) => t.projectId === pid);
+
+  /* התראות של משתמש, מהחדש לישן */
+  S.notifsOf = (uid) => (S.db.notifs || []).filter((n) => n.userId === uid)
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
+  S.unreadCount = (uid) => S.notifsOf(uid).filter((n) => !n.read).length;
 
   /* משימות בשיבוץ (שלב עבודה נוכחי ללא עובד) */
   S.tasksInPool = () => S.db.tasks.filter((t) => {
