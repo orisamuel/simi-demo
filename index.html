@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>סימי — מסדרת את כל המשימות</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%2316150f"/><text x="32" y="46" font-family="Georgia,serif" font-weight="bold" font-size="40" fill="%23e9b32a" text-anchor="middle">ס</text></svg>'>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="topbar-right">
+      <button class="nav-burger" id="navBurger" aria-label="תפריט">
+        <span></span><span></span><span></span>
+      </button>
+      <a class="brand" href="#" id="brandHome">
+        <span class="brand-mark" aria-hidden="true">ס</span>
+        <span class="brand-text">
+          <strong>סימי</strong>
+          <small>מסדרת את כל המשימות</small>
+        </span>
+      </a>
+    </div>
+
+    <div class="topbar-left">
+      <button class="btn btn-primary" id="btnNewTask" hidden>
+        <span class="btn-ic" data-icon="plus"></span>
+        משימה חדשה
+      </button>
+      <div class="user-switch" id="userSwitch">
+        <button class="user-switch-btn" id="userSwitchBtn" aria-haspopup="listbox" aria-expanded="false">
+          <span class="avatar" id="curAvatar">?</span>
+          <span class="user-switch-meta">
+            <strong id="curName">—</strong>
+            <small id="curRoles">—</small>
+          </span>
+          <span class="chev" data-icon="chevron-down"></span>
+        </button>
+        <div class="user-switch-menu" id="userSwitchMenu" role="listbox" hidden></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <!-- ===== Sidebar ===== -->
+    <nav class="sidebar" id="sidebar" aria-label="ניווט ראשי">
+      <ul class="nav" id="mainNav"></ul>
+      <div class="sidebar-foot">
+        <button class="btn btn-ghost btn-sm" id="btnResetDemo" title="איפוס כל נתוני הדמו">
+          <span class="btn-ic" data-icon="rotate"></span>
+          איפוס הדמו
+        </button>
+        <p class="demo-note">גרסת דמו · כל הנתונים מדומים</p>
+        <div class="made-by">מבית <img src="assets/logo-42.png" alt="ארבעים ושתיים — סושיאל, דיגיטל, קריאייטיב"></div>
+      </div>
+    </nav>
+
+    <!-- ===== Main ===== -->
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+
+  <!-- ===== Task drawer ===== -->
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="פרטי משימה" hidden></aside>
+
+  <!-- ===== Modal ===== -->
+  <div class="modal-scrim" id="modalScrim" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <!-- ===== Toasts ===== -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="js/icons.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/drawer.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
